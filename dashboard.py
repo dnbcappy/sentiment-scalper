@@ -11,13 +11,19 @@ Run:
     streamlit run dashboard.py
 """
 
+import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import streamlit as st
 
-DB_PATH = "sentiment.db"
+from signals import compute_signals
+
+DB_PATH = os.getenv(
+    "DB_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "sentiment.db"),
+)
 
 st.set_page_config(page_title="Sentiment Scalper", layout="wide")
 
@@ -38,10 +44,18 @@ def load_data(hours: int) -> pd.DataFrame:
         df["timestamp"] = pd.to_datetime(df["created_utc"], unit="s", utc=True)
     return df
 
+
+@st.cache_data(ttl=60)
+def load_signals(db_path: str) -> pd.DataFrame:
+    return compute_signals(db_path)
+
+
 # ---------- Sidebar ----------
 
 st.sidebar.title("Filters")
-hours = st.sidebar.slider("Lookback (hours)", min_value=1, max_value=168, value=24)
+hours            = st.sidebar.slider("Lookback (hours)", min_value=1, max_value=168, value=24)
+signal_threshold = st.sidebar.slider("Signal threshold", min_value=0.0, max_value=5.0, value=1.5, step=0.1)
+
 df = load_data(hours)
 
 if df.empty:
@@ -49,17 +63,48 @@ if df.empty:
     st.warning("No data yet. Run `python sentiment_scalper.py` first.")
     st.stop()
 
-tickers = sorted(df["ticker"].unique())
-selected = st.sidebar.multiselect("Tickers", tickers, default=tickers)
-sources  = sorted(df["source"].unique())
+tickers          = sorted(df["ticker"].unique())
+selected         = st.sidebar.multiselect("Tickers", tickers, default=tickers)
+sources          = sorted(df["source"].unique())
 selected_sources = st.sidebar.multiselect("Sources", sources, default=sources)
 
 df = df[df["ticker"].isin(selected) & df["source"].isin(selected_sources)]
 
-# ---------- Header / KPIs ----------
+if df.empty:
+    st.warning("No data matches the current filters.")
+    st.stop()
+
+# ---------- Header ----------
 
 st.title("📈 Sentiment Scalper")
 st.caption(f"Last {hours}h • {len(df):,} mentions • models: {', '.join(df['model'].dropna().unique()) or 'n/a'}")
+
+# ---------- Active signals ----------
+
+st.subheader("Active signals right now")
+
+signals_df = load_signals(DB_PATH)
+active = (
+    signals_df[signals_df["signal"].abs() >= signal_threshold]
+    if not signals_df.empty
+    else signals_df
+)
+
+if active.empty:
+    st.info("No signals above threshold. Lower the slider or run the scraper to collect more data.")
+else:
+    st.dataframe(
+        active.style.format({
+            "signal":        "{:+.2f}",
+            "volume_z":      "{:+.2f}",
+            "sentiment_z":   "{:+.2f}",
+            "current_sent":  "{:+.3f}",
+        }),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+# ---------- KPIs ----------
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Mentions", f"{len(df):,}")
@@ -113,5 +158,7 @@ st.bar_chart(vol_ts)
 
 st.subheader("Recent mentions")
 recent = df[["timestamp", "ticker", "source", "subreddit", "compound", "text"]].head(100).copy()
-recent["text"] = recent["text"].str.slice(0, 240) + "…"
+recent["text"] = recent["text"].fillna("").apply(
+    lambda t: t[:240] + "…" if len(t) > 240 else t
+)
 st.dataframe(recent, use_container_width=True, hide_index=True)
