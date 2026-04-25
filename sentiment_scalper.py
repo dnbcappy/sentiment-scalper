@@ -19,6 +19,7 @@ Run:
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import sqlite3
@@ -37,6 +38,9 @@ except ImportError:
 
 NEWSAPI_KEY     = os.getenv("NEWSAPI_KEY", "")
 SENTIMENT_MODEL = os.getenv("SENTIMENT_MODEL", "vader").lower()
+
+LOOKBACK_HOURS = 168
+MAX_TEXT_LEN   = 2000
 
 TICKERS = {
     "BTC":  [r"\bBTC\b", r"\bbitcoin\b"],
@@ -64,7 +68,10 @@ NEWSAPI_QUERIES = {
     "MSFT": "Microsoft stock OR MSFT",
 }
 
-DB_PATH = "sentiment.db"
+DB_PATH = os.getenv(
+    "DB_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "sentiment.db"),
+)
 
 _compiled = {t: [re.compile(p, re.IGNORECASE) for p in pats] for t, pats in TICKERS.items()}
 
@@ -105,7 +112,7 @@ class FinBertEngine:
     def score_batch(self, texts: list[str], batch_size: int = 16) -> list[dict]:
         out = []
         for i in range(0, len(texts), batch_size):
-            chunk = [(t or "")[:2000] for t in texts[i:i + batch_size]]
+            chunk = [(t or "")[:MAX_TEXT_LEN] for t in texts[i:i + batch_size]]
             enc = self.tokenizer(
                 chunk, padding=True, truncation=True,
                 max_length=512, return_tensors="pt",
@@ -159,7 +166,7 @@ def fetch_newsapi() -> list[dict]:
 
     items = []
     seen_urls = set()
-    from_time = (datetime.now(timezone.utc) - timedelta(hours=168)).strftime("%Y-%m-%dT%H:%M:%S")
+    from_time = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)).strftime("%Y-%m-%dT%H:%M:%S")
 
     for ticker, query in NEWSAPI_QUERIES.items():
         try:
@@ -200,7 +207,7 @@ def fetch_newsapi() -> list[dict]:
                 except Exception:
                     created = int(datetime.now(timezone.utc).timestamp())
                 items.append({
-                    "id": f"newsapi_{abs(hash(url))}",
+                    "id": f"newsapi_{hashlib.md5(url.encode()).hexdigest()[:16]}",
                     "source": "newsapi",
                     "subreddit": (art.get("source") or {}).get("name", "unknown"),
                     "text": f"{title}\n\n{desc}",
@@ -244,7 +251,7 @@ def ingest(conn: sqlite3.Connection, engine) -> int:
             """, (
                 f"{item['id']}__{t}",
                 t, item["source"], item["subreddit"],
-                item["text"][:2000], item["score"], engine.name,
+                item["text"][:MAX_TEXT_LEN], item["score"], engine.name,
                 s["compound"], s["pos"], s["neg"], s["neu"],
                 item["created_utc"], now,
             ))
@@ -281,7 +288,7 @@ def main() -> None:
     conn = init_db()
     n = ingest(conn, engine)
     print(f"\nInserted {n} new rows")
-    summarize(conn, hours=168)  # 7 days
+    summarize(conn, hours=LOOKBACK_HOURS)
     summarize(conn, hours=24)
     conn.close()
 
