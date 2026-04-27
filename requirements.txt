@@ -4,6 +4,7 @@ vaderSentiment>=3.3
 pandas>=2.0
 streamlit>=1.30
 python-dotenv>=1.0
+yfinance>=0.2
 
 # Optional - only needed if SENTIMENT_MODEL=finbert
 # transformers>=4.40
