@@ -47,20 +47,21 @@ def compute_hit_rates(db_path: str, threshold: float) -> pd.DataFrame:
     if detail.empty:
         return _empty()
 
-    by_ticker = (
-        detail.groupby("ticker")
-              .apply(_aggregate, include_groups=False)
-              .reset_index()
-    )
+    rows = [
+        {"ticker": ticker, **_aggregate(group)}
+        for ticker, group in detail.groupby("ticker")
+    ]
+    rows.append({"ticker": "ALL", **_aggregate(detail)})
 
-    overall = pd.DataFrame([_aggregate(detail) | {"ticker": "ALL"}])
-    return pd.concat([by_ticker, overall], ignore_index=True)[_OUT_COLS]
+    return pd.DataFrame(rows)[_OUT_COLS]
 
 
 # ---------- Internals ----------
 
 def _build_detail(sigs: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
-    """One row per (signal, horizon) outcome. Returns long-format detail."""
+    """One row per signal. Horizon outcomes are NaN if the horizon hasn't
+    elapsed yet (exit timestamp later than our latest price bar) — treats
+    those positions as 'still open' rather than reporting a spurious 0% return."""
     rows = []
     for ticker, group in sigs.groupby("ticker"):
         ticker_prices = prices[prices["ticker"] == ticker].sort_values("ts")
@@ -68,6 +69,7 @@ def _build_detail(sigs: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
             continue
         ts_array = ticker_prices["ts"].to_numpy()
         close_array = ticker_prices["close"].to_numpy()
+        latest_ts = int(ts_array[-1])
 
         for _, sig in group.iterrows():
             entry_ts = int(sig["signal_ts"])
@@ -76,7 +78,13 @@ def _build_detail(sigs: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
                 continue
             row = {"ticker": ticker, "direction": sig["direction"]}
             for h in HORIZONS_DAYS:
-                exit_close = _close_at_or_before(ts_array, close_array, entry_ts + h * 86400)
+                exit_ts = entry_ts + h * 86400
+                if exit_ts > latest_ts:
+                    # Horizon not yet reached — position still open
+                    row[f"return_{h}d"] = None
+                    row[f"hit_{h}d"]    = None
+                    continue
+                exit_close = _close_at_or_before(ts_array, close_array, exit_ts)
                 if exit_close is None:
                     row[f"return_{h}d"] = None
                     row[f"hit_{h}d"]    = None

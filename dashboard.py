@@ -15,9 +15,12 @@ import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
+from backtest import compute_hit_rates
+from prices import get_prices, update_prices
 from signals import compute_signals
 
 DB_PATH = os.getenv(
@@ -49,6 +52,29 @@ def load_data(hours: int) -> pd.DataFrame:
 def load_signals(db_path: str) -> pd.DataFrame:
     return compute_signals(db_path)
 
+
+@st.cache_data(ttl=3600)
+def refresh_prices(db_path: str) -> int:
+    return update_prices(db_path)
+
+
+@st.cache_data(ttl=3600)
+def load_prices(db_path: str) -> pd.DataFrame:
+    return get_prices(db_path)
+
+
+@st.cache_data(ttl=600)
+def load_hit_rates(db_path: str, threshold: float) -> pd.DataFrame:
+    return compute_hit_rates(db_path, threshold)
+
+
+# ---------- Price refresh (cached 1h) ----------
+
+try:
+    with st.spinner("Refreshing prices (cached 1h)..."):
+        refresh_prices(DB_PATH)
+except Exception as e:
+    st.warning(f"Price refresh failed: {e}. Continuing with cached data.")
 
 # ---------- Sidebar ----------
 
@@ -153,6 +179,97 @@ vol_ts = (
       .fillna(0)
 )
 st.bar_chart(vol_ts)
+
+# ---------- Sentiment vs Price (per ticker) ----------
+
+st.subheader("Sentiment vs Price")
+prices_df = load_prices(DB_PATH)
+
+if prices_df.empty:
+    st.info("No price data cached yet.")
+else:
+    overlay_ticker = st.selectbox(
+        "Ticker",
+        options=sorted(set(df["ticker"].unique()) & set(prices_df["ticker"].unique())),
+        key="overlay_ticker",
+    )
+
+    # Sentiment: mentions for this ticker, hourly mean within the lookback window
+    sent_one = (
+        df[df["ticker"] == overlay_ticker]
+        .set_index("timestamp")["compound"]
+        .resample("1h")
+        .mean()
+        .dropna()
+        .reset_index()
+    )
+
+    # Prices: same ticker, restrict to the lookback window for visual coherence
+    since_ts = int((datetime.now(timezone.utc) - timedelta(hours=hours)).timestamp())
+    price_one = (
+        prices_df[(prices_df["ticker"] == overlay_ticker) & (prices_df["ts"] >= since_ts)]
+        [["timestamp", "close"]]
+        .dropna()
+    )
+
+    if sent_one.empty or price_one.empty:
+        st.info(f"Not enough overlapping data for {overlay_ticker} in the last {hours}h.")
+    else:
+        sent_layer = (
+            alt.Chart(sent_one)
+               .mark_line(color="#4c78a8")
+               .encode(
+                   x=alt.X("timestamp:T", title="Time"),
+                   y=alt.Y("compound:Q",
+                           title="Avg sentiment",
+                           axis=alt.Axis(titleColor="#4c78a8"),
+                           scale=alt.Scale(zero=False)),
+               )
+        )
+        price_layer = (
+            alt.Chart(price_one)
+               .mark_line(color="#f58518", point=True)
+               .encode(
+                   x=alt.X("timestamp:T"),
+                   y=alt.Y("close:Q",
+                           title="Close price (USD)",
+                           axis=alt.Axis(titleColor="#f58518"),
+                           scale=alt.Scale(zero=False)),
+               )
+        )
+        chart = (
+            alt.layer(sent_layer, price_layer)
+               .resolve_scale(y="independent")
+               .properties(height=400, title=f"{overlay_ticker}: sentiment (1h) vs price (daily close)")
+        )
+        st.altair_chart(chart, use_container_width=True)
+        st.caption("Note: sentiment is hourly, price is daily close. A 24h lookback may show only 1 price point.")
+
+# ---------- Did it work? — backtest hit rate ----------
+
+st.subheader("Did it work? — backtest hit rate")
+st.caption(
+    f"For each past signal at |signal| ≥ {signal_threshold:.1f}, did the price move "
+    "in the predicted direction over the next 1d / 3d / 7d? "
+    "Horizons that haven't elapsed yet are excluded (still-open positions)."
+)
+
+hit_df = load_hit_rates(DB_PATH, signal_threshold)
+if hit_df.empty:
+    st.info("No backtest results yet — need historical signals plus cached price data.")
+else:
+    st.dataframe(
+        hit_df.style.format({
+            "hit_rate_1d":   "{:.1%}",
+            "hit_rate_3d":   "{:.1%}",
+            "hit_rate_7d":   "{:.1%}",
+            "avg_return_1d": "{:+.2%}",
+            "avg_return_3d": "{:+.2%}",
+            "avg_return_7d": "{:+.2%}",
+        }, na_rep="—"),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 # ---------- Recent mentions ----------
 
