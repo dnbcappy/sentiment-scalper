@@ -1,0 +1,46 @@
+name: Scrape NewsAPI hourly
+
+# Cron syntax is UTC. Hourly at minute 7 to avoid the round-hour stampede
+# that hits a lot of free APIs at :00. With the free NewsAPI tier (1k articles
+# /day) we have plenty of budget for 24 runs/day.
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+# Only one scrape may run at a time — prevents overlapping if a run is slow
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run scraper
+        env:
+          NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SENTIMENT_MODEL: vader
+        run: python sentiment_scalper.py
+
+      - name: Run price refresh
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python prices.py
