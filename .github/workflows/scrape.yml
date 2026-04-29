@@ -1,11 +1,15 @@
 name: Scrape NewsAPI hourly
 
-# Cron syntax is UTC. Hourly at minute 7 to avoid the round-hour stampede
-# that hits a lot of free APIs at :00. With the free NewsAPI tier (1k articles
-# /day) we have plenty of budget for 24 runs/day.
+# Cron syntax is UTC. Every 3 hours at minute 7 (avoids the round-hour
+# stampede that hits a lot of free APIs at :00).
+#
+# NewsAPI Developer free tier is 100 requests / 24h. Each scraper run does
+# 9 requests (one per ticker query). 8 runs/day * 9 = 72 req/day, leaving
+# 28 req/day headroom for manual runs and price-refresh retries. Going
+# more frequent means we'd hit 429s and lose runs anyway.
 on:
   schedule:
-    - cron: "7 * * * *"
+    - cron: "7 */3 * * *"
   workflow_dispatch: {} # allow manual runs from the Actions tab
 
 # Only one scrape may run at a time — prevents overlapping if a run is slow
