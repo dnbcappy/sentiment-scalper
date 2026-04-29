@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(venv/Scripts/python -c ' *)",
+      "Bash(git commit -m ' *)",
+      "Bash(venv/Scripts/python -m pip install -r requirements-dev.txt)",
+      "Bash(venv/Scripts/python -m ruff format .)",
+      "Bash(venv/Scripts/python -m ruff check . --fix)",
+      "Bash(venv/Scripts/python -m pytest)",
+      "Bash(venv/Scripts/python -m ruff check tests/)",
+      "Bash(venv/Scripts/python -m ruff format --check tests/)",
+      "Bash(venv/Scripts/python -m ruff check tests/ --fix)",
+      "Bash(venv/Scripts/python -m ruff format tests/)",
+      "Bash(git mv *)",
+      "Bash(venv/Scripts/python -m pytest -q)",
+      "Bash(cat .claude/settings.json)",
+      "Bash(cat .claude/settings.local.json)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(./.env.production)",
+      "Read(./.env.development)",
+      "Bash(cat .env)",
+      "Bash(cat ./.env)",
+      "Bash(type .env)",
+      "Bash(type ./.env)"
+    ]
+  }
+}
