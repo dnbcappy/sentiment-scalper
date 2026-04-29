@@ -29,13 +29,14 @@ _OUT_COLS = (
 )
 
 
-def compute_hit_rates(db_path: str, threshold: float) -> pd.DataFrame:
+def compute_hit_rates(db_path: str, threshold: float, model: str | None = None) -> pd.DataFrame:
     """
     Per-ticker hit rates at 1d/3d/7d horizons, plus an aggregate 'ALL' row.
     Returns an empty (but well-typed) DataFrame if there are no signals or
-    no price data yet.
+    no price data yet. If `model` is given, only mentions scored by that
+    engine are used to compute the historical signals.
     """
-    sigs = compute_historical_signals(db_path, threshold=threshold)
+    sigs = compute_historical_signals(db_path, threshold=threshold, model=model)
     if sigs.empty:
         return _empty()
 

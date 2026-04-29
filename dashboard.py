@@ -21,7 +21,7 @@ import streamlit as st
 
 from backtest import compute_hit_rates
 from prices import get_prices, update_prices
-from signals import compute_signals
+from signals import compute_signals, list_engines
 
 DB_PATH = os.getenv(
     "DB_PATH",
@@ -34,15 +34,18 @@ st.set_page_config(page_title="Sentiment Scalper", layout="wide")
 
 
 @st.cache_data(ttl=60)
-def load_data(hours: int) -> pd.DataFrame:
+def load_data(hours: int, model: str | None = None) -> pd.DataFrame:
     cutoff = int((datetime.now(timezone.utc) - timedelta(hours=hours)).timestamp())
+    sql = "SELECT * FROM mentions WHERE created_utc >= ?"
+    params: list = [cutoff]
+    if model is not None:
+        sql += " AND model = ?"
+        params.append(model)
+    sql += " ORDER BY created_utc DESC"
+
     conn = sqlite3.connect(DB_PATH)
     try:
-        df = pd.read_sql_query(
-            "SELECT * FROM mentions WHERE created_utc >= ? ORDER BY created_utc DESC",
-            conn,
-            params=(cutoff,),
-        )
+        df = pd.read_sql_query(sql, conn, params=params)
     finally:
         conn.close()
     if not df.empty:
@@ -51,8 +54,8 @@ def load_data(hours: int) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=60)
-def load_signals(db_path: str) -> pd.DataFrame:
-    return compute_signals(db_path)
+def load_signals(db_path: str, model: str | None = None) -> pd.DataFrame:
+    return compute_signals(db_path, model=model)
 
 
 @st.cache_data(ttl=3600)
@@ -66,8 +69,8 @@ def load_prices(db_path: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=600)
-def load_hit_rates(db_path: str, threshold: float) -> pd.DataFrame:
-    return compute_hit_rates(db_path, threshold)
+def load_hit_rates(db_path: str, threshold: float, model: str | None = None) -> pd.DataFrame:
+    return compute_hit_rates(db_path, threshold, model=model)
 
 
 # ---------- Price refresh (cached 1h) ----------
@@ -86,7 +89,13 @@ signal_threshold = st.sidebar.slider(
     "Signal threshold", min_value=0.0, max_value=5.0, value=1.5, step=0.1
 )
 
-df = load_data(hours)
+available_engines = list_engines(DB_PATH)
+if available_engines:
+    selected_engine = st.sidebar.selectbox("Sentiment engine", available_engines, index=0)
+else:
+    selected_engine = None
+
+df = load_data(hours, model=selected_engine)
 
 if df.empty:
     st.title("📈 Sentiment Scalper")
@@ -107,15 +116,13 @@ if df.empty:
 # ---------- Header ----------
 
 st.title("📈 Sentiment Scalper")
-st.caption(
-    f"Last {hours}h • {len(df):,} mentions • models: {', '.join(df['model'].dropna().unique()) or 'n/a'}"
-)
+st.caption(f"Last {hours}h • {len(df):,} mentions • engine: {selected_engine or 'n/a'}")
 
 # ---------- Active signals ----------
 
 st.subheader("Active signals right now")
 
-signals_df = load_signals(DB_PATH)
+signals_df = load_signals(DB_PATH, model=selected_engine)
 active = (
     signals_df[signals_df["signal"].abs() >= signal_threshold]
     if not signals_df.empty
@@ -271,7 +278,7 @@ st.caption(
     "Horizons that haven't elapsed yet are excluded (still-open positions)."
 )
 
-hit_df = load_hit_rates(DB_PATH, signal_threshold)
+hit_df = load_hit_rates(DB_PATH, signal_threshold, model=selected_engine)
 if hit_df.empty:
     st.info("No backtest results yet — need historical signals plus cached price data.")
 else:
@@ -290,6 +297,43 @@ else:
         use_container_width=True,
         hide_index=True,
     )
+
+# ---------- Engine comparison (only when 2+ engines have data) ----------
+
+if len(available_engines) >= 2:
+    st.subheader("Engine comparison")
+    st.caption(
+        "Same backtest, run separately per sentiment engine. Use this to see whether "
+        "one engine's signals beat the other on the same articles."
+    )
+    compare_frames = []
+    for engine_name in available_engines:
+        per_engine = load_hit_rates(DB_PATH, signal_threshold, model=engine_name)
+        if per_engine.empty:
+            continue
+        per_engine = per_engine.copy()
+        per_engine.insert(0, "engine", engine_name)
+        compare_frames.append(per_engine)
+
+    if not compare_frames:
+        st.info("No backtest results in either engine yet.")
+    else:
+        compare_df = pd.concat(compare_frames, ignore_index=True)
+        st.dataframe(
+            compare_df.style.format(
+                {
+                    "hit_rate_1d": "{:.1%}",
+                    "hit_rate_3d": "{:.1%}",
+                    "hit_rate_7d": "{:.1%}",
+                    "avg_return_1d": "{:+.2%}",
+                    "avg_return_3d": "{:+.2%}",
+                    "avg_return_7d": "{:+.2%}",
+                },
+                na_rep="—",
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 # ---------- Recent mentions ----------
 

@@ -171,8 +171,27 @@ def init_db() -> sqlite3.Connection:
     if "model" not in cols:
         conn.execute("ALTER TABLE mentions ADD COLUMN model TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ticker_time ON mentions(ticker, created_utc)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_model ON mentions(model)")
     conn.commit()
+    _migrate_ids_v2(conn)
     return conn
+
+
+def _migrate_ids_v2(conn: sqlite3.Connection) -> int:
+    """Suffix mention IDs with '__<model>' so the same article can carry scores
+    from multiple engines without primary-key collisions. Idempotent: rows that
+    already end with the model suffix are skipped."""
+    rows = conn.execute("SELECT id, model FROM mentions WHERE model IS NOT NULL").fetchall()
+    updates = [
+        (f"{row_id}__{model}", row_id)
+        for row_id, model in rows
+        if not row_id.endswith(f"__{model}")
+    ]
+    if updates:
+        conn.executemany("UPDATE mentions SET id = ? WHERE id = ?", updates)
+        conn.commit()
+        logger.info("Migrated %d mention IDs to include model suffix", len(updates))
+    return len(updates)
 
 
 # ---------- Fetcher ----------
@@ -279,7 +298,7 @@ def ingest(conn: sqlite3.Connection, engine) -> int:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
-                    f"{item['id']}__{t}",
+                    f"{item['id']}__{t}__{engine.name}",
                     t,
                     item["source"],
                     item["subreddit"],
