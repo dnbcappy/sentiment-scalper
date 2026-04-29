@@ -20,6 +20,7 @@ Run:
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import sqlite3
@@ -34,6 +35,8 @@ try:
     load_dotenv()
 except ImportError:
     pass
+
+logger = logging.getLogger(__name__)
 
 # ---------- Config ----------
 
@@ -107,7 +110,7 @@ class FinBertEngine:
     name = "finbert"
 
     def __init__(self):
-        print("[finbert] loading model (first run downloads ~440MB)...")
+        logger.info("Loading FinBERT model (first run downloads ~440MB)...")
         import torch
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
@@ -115,7 +118,7 @@ class FinBertEngine:
         self.tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
         self.model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
         self.model.eval()
-        print("[finbert] ready.")
+        logger.info("FinBERT ready.")
 
     def score_batch(self, texts: list[str], batch_size: int = 16) -> list[dict]:
         out = []
@@ -178,7 +181,7 @@ def init_db() -> sqlite3.Connection:
 def fetch_newsapi() -> list[dict]:
     """Pull recent articles from NewsAPI, one query per ticker."""
     if not NEWSAPI_KEY:
-        print("[newsapi] no key set in .env, aborting")
+        logger.error("No NEWSAPI_KEY set in environment, aborting fetch")
         return []
 
     items = []
@@ -202,15 +205,15 @@ def fetch_newsapi() -> list[dict]:
                 timeout=15,
             )
             if r.status_code == 401:
-                print("[newsapi] 401 Unauthorized - check your NEWSAPI_KEY in .env")
+                logger.error("NewsAPI 401 Unauthorized — check NEWSAPI_KEY in .env")
                 return items
             if r.status_code == 429:
-                print("[newsapi] rate limit hit (100/day on free tier), stopping")
+                logger.warning("NewsAPI rate limit hit (free tier), stopping fetch")
                 break
             r.raise_for_status()
             data = r.json()
             articles = data.get("articles", [])
-            print(f"  [{ticker}] {len(articles)} articles")
+            logger.info("Fetched %d articles for %s", len(articles), ticker)
             for art in articles:
                 url = art.get("url")
                 if not url or url in seen_urls:
@@ -236,8 +239,8 @@ def fetch_newsapi() -> list[dict]:
                     }
                 )
             time.sleep(0.5)
-        except Exception as e:
-            print(f"  [{ticker}] error: {e}")
+        except Exception:
+            logger.exception("Failed to fetch news for %s", ticker)
     return items
 
 
@@ -245,9 +248,9 @@ def fetch_newsapi() -> list[dict]:
 
 
 def ingest(conn: sqlite3.Connection, engine) -> int:
-    print("Fetching NewsAPI (one query per ticker)...")
+    logger.info("Fetching NewsAPI (one query per ticker)...")
     items = fetch_newsapi()
-    print(f"Total: {len(items)} unique articles")
+    logger.info("Total: %d unique articles", len(items))
 
     candidates = []
     for item in items:
@@ -255,7 +258,9 @@ def ingest(conn: sqlite3.Connection, engine) -> int:
         if tickers:
             item["tickers"] = tickers
             candidates.append(item)
-    print(f"{len(candidates)} contain tracked tickers -> scoring with {engine.name}")
+    logger.info(
+        "%d articles contain tracked tickers — scoring with %s", len(candidates), engine.name
+    )
 
     if not candidates:
         return 0
@@ -319,14 +324,18 @@ def summarize(conn: sqlite3.Connection, hours: int = 24) -> None:
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
     if not NEWSAPI_KEY:
-        print("ERROR: No NEWSAPI_KEY set in .env")
-        print("Get a free key at https://newsapi.org/register")
+        logger.error("No NEWSAPI_KEY set in .env. Get a free key at https://newsapi.org/register")
         return
     engine = get_engine(SENTIMENT_MODEL)
     conn = init_db()
     n = ingest(conn, engine)
-    print(f"\nInserted {n} new rows")
+    logger.info("Inserted %d new rows", n)
     summarize(conn, hours=LOOKBACK_HOURS)
     summarize(conn, hours=24)
     conn.close()

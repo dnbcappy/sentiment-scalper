@@ -201,11 +201,18 @@ def _f(x) -> float | None:
 # ---------- CLI entry point ----------
 
 if __name__ == "__main__":
+    import logging
     import os
 
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    log = logging.getLogger(__name__)
     db = os.getenv(
         "DB_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "sentiment.db")
     )
-    print(f"Updating prices into {db} ...")
+    log.info("Updating prices into %s", db)
     n = update_prices(db)
-    print(f"Upserted {n} rows.")
+    log.info("Upserted %d rows", n)
