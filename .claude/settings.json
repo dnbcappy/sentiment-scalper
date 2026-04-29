@@ -14,7 +14,8 @@
       "Bash(git mv *)",
       "Bash(venv/Scripts/python -m pytest -q)",
       "Bash(cat .claude/settings.json)",
-      "Bash(cat .claude/settings.local.json)"
+      "Bash(cat .claude/settings.local.json)",
+      "Bash(git rm *)"
     ],
     "deny": [
       "Read(./.env)",

@@ -27,3 +27,6 @@ dist/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Claude Code per-user settings (project-shared settings.json stays tracked)
+.claude/settings.local.json
