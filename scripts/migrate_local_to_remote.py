@@ -26,6 +26,13 @@ from pathlib import Path
 # Allow running from the project root: scripts/ imports modules at root
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+try:
+    from dotenv import load_dotenv  # noqa: E402
+
+    load_dotenv()
+except ImportError:
+    pass
+
 from sqlalchemy import create_engine, text  # noqa: E402
 
 logging.basicConfig(
