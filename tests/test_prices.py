@@ -12,7 +12,7 @@ from tests.conftest import seed_prices
 
 def test_get_prices_no_table_returns_empty(db_path):
     """If the prices table has never been created, get_prices returns empty."""
-    df = get_prices(db_path, ticker="BTC")
+    df = get_prices(ticker="BTC")
     assert df.empty
 
 
@@ -25,7 +25,7 @@ def test_get_prices_filters_by_ticker(db_path):
             {"ticker": "BTC", "ts": 1700086400, "close": 51000.0},
         ],
     )
-    btc = get_prices(db_path, ticker="BTC")
+    btc = get_prices(ticker="BTC")
     assert len(btc) == 2
     assert set(btc["ticker"]) == {"BTC"}
 
@@ -38,14 +38,14 @@ def test_get_prices_filters_by_since_ts(db_path):
             {"ticker": "BTC", "ts": 1700086400, "close": 51000.0},
         ],
     )
-    df = get_prices(db_path, since_ts=1700050000)
+    df = get_prices(since_ts=1700050000)
     assert len(df) == 1
     assert df.iloc[0]["close"] == 51000.0
 
 
 def test_get_prices_adds_timestamp_column(db_path):
     seed_prices(db_path, [{"ticker": "BTC", "ts": 1700000000, "close": 50000.0}])
-    df = get_prices(db_path)
+    df = get_prices()
     assert "timestamp" in df.columns
 
 

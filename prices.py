@@ -2,21 +2,23 @@
 Sentiment Scalper - Price Cache
 --------------------------------
 Pulls daily OHLC for tracked tickers via yfinance and caches them in the
-same SQLite DB used for mentions.
+configured database (SQLite locally, Postgres in production — same code).
 
 Crypto tickers are mapped to yfinance's USD-pair symbols (BTC -> BTC-USD).
 Stocks pass through unchanged. The cache uses (ticker, date) as the primary
-key with INSERT OR REPLACE, so re-running update_prices is idempotent and
-also captures intraday updates of today's bar.
+key with INSERT ... ON CONFLICT DO UPDATE, so re-running update_prices is
+idempotent and also captures intraday updates of today's bar.
 """
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import yfinance as yf
+from sqlalchemy import text
+
+from db import get_engine
 
 # ---------- Symbol mapping ----------
 
@@ -37,35 +39,50 @@ DEFAULT_LOOKBACK_DAYS = 60
 
 # ---------- Schema ----------
 
+_CREATE_PRICES = """
+CREATE TABLE IF NOT EXISTS prices (
+    ticker  TEXT NOT NULL,
+    date    TEXT NOT NULL,
+    ts      INTEGER NOT NULL,
+    open    REAL,
+    high    REAL,
+    low     REAL,
+    close   REAL,
+    volume  REAL,
+    PRIMARY KEY (ticker, date)
+)
+"""
+_CREATE_PRICES_INDEX = "CREATE INDEX IF NOT EXISTS idx_prices_ticker_ts ON prices(ticker, ts)"
 
-def init_prices_table(conn: sqlite3.Connection) -> None:
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS prices (
-            ticker  TEXT NOT NULL,
-            date    TEXT NOT NULL,
-            ts      INTEGER NOT NULL,
-            open    REAL,
-            high    REAL,
-            low     REAL,
-            close   REAL,
-            volume  REAL,
-            PRIMARY KEY (ticker, date)
-        )
-    """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_prices_ticker_ts ON prices(ticker, ts)")
-    conn.commit()
+
+def init_prices_table() -> None:
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(text(_CREATE_PRICES))
+        conn.execute(text(_CREATE_PRICES_INDEX))
 
 
 # ---------- Public API ----------
 
+# ON CONFLICT DO UPDATE keeps the row fresh for today's still-changing bar.
+_UPSERT_PRICE = text("""
+    INSERT INTO prices (ticker, date, ts, open, high, low, close, volume)
+    VALUES (:ticker, :date, :ts, :open, :high, :low, :close, :volume)
+    ON CONFLICT (ticker, date) DO UPDATE SET
+        ts     = excluded.ts,
+        open   = excluded.open,
+        high   = excluded.high,
+        low    = excluded.low,
+        close  = excluded.close,
+        volume = excluded.volume
+""")
+
 
 def update_prices(
-    db_path: str, tickers: list[str] | None = None, lookback_days: int = DEFAULT_LOOKBACK_DAYS
+    tickers: list[str] | None = None, lookback_days: int = DEFAULT_LOOKBACK_DAYS
 ) -> int:
-    """
-    Fetch daily OHLC for the given tickers and upsert into the prices table.
-    Returns the number of rows touched.
-    """
+    """Fetch daily OHLC for the given tickers and upsert into the prices table.
+    Returns the number of rows written (inserts + updates)."""
     if tickers is None:
         tickers = list(YF_SYMBOL.keys())
 
@@ -92,53 +109,39 @@ def update_prices(
     if not rows:
         return 0
 
-    conn = sqlite3.connect(db_path)
-    try:
-        init_prices_table(conn)
-        cur = conn.executemany(
-            """
-            INSERT OR REPLACE INTO prices
-            (ticker, date, ts, open, high, low, close, volume)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            rows,
-        )
-        conn.commit()
-        return cur.rowcount
-    finally:
-        conn.close()
+    init_prices_table()
+    engine = get_engine()
+    with engine.begin() as conn:
+        result = conn.execute(_UPSERT_PRICE, rows)
+    # rowcount on upserts is well-defined in both SQLite (3.24+) and Postgres
+    return result.rowcount or len(rows)
 
 
-def get_prices(
-    db_path: str, ticker: str | None = None, since_ts: int | None = None
-) -> pd.DataFrame:
-    """
-    Read cached prices. If ticker is None, returns all tickers.
-    Adds a 'timestamp' column (UTC datetime) for plotting convenience.
-    """
-    sql = "SELECT * FROM prices"
-    where = []
-    params: list = []
+def get_prices(ticker: str | None = None, since_ts: int | None = None) -> pd.DataFrame:
+    """Read cached prices. Adds a 'timestamp' column for plotting convenience.
+    If the prices table doesn't exist yet, returns an empty (typed) DataFrame."""
+    where: list[str] = []
+    params: dict = {}
     if ticker is not None:
-        where.append("ticker = ?")
-        params.append(ticker)
+        where.append("ticker = :ticker")
+        params["ticker"] = ticker
     if since_ts is not None:
-        where.append("ts >= ?")
-        params.append(since_ts)
+        where.append("ts >= :since_ts")
+        params["since_ts"] = since_ts
+
+    sql = "SELECT * FROM prices"
     if where:
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY ticker, ts"
 
-    conn = sqlite3.connect(db_path)
+    empty_cols = ["ticker", "date", "ts", "open", "high", "low", "close", "volume", "timestamp"]
+    engine = get_engine()
     try:
-        df = pd.read_sql_query(sql, conn, params=params)
-    except pd.io.sql.DatabaseError:
-        # Table doesn't exist yet — first run before update_prices was called
-        return pd.DataFrame(
-            columns=["ticker", "date", "ts", "open", "high", "low", "close", "volume", "timestamp"]
-        )
-    finally:
-        conn.close()
+        with engine.connect() as conn:
+            df = pd.read_sql_query(text(sql), conn, params=params)
+    except Exception:
+        # Table doesn't exist yet (first run before update_prices was called)
+        return pd.DataFrame(columns=empty_cols)
 
     if not df.empty:
         df["timestamp"] = pd.to_datetime(df["ts"], unit="s", utc=True)
@@ -156,11 +159,9 @@ def _iter_rows(raw: pd.DataFrame, yf_to_ticker: dict[str, str]):
         sym = yf_symbols[0]
         ticker = yf_to_ticker[sym]
         for date, row in raw.dropna(how="all").iterrows():
-            yield _row_tuple(ticker, date, row)
+            yield _row_dict(ticker, date, row)
         return
 
-    # Multi-ticker: MultiIndex columns. yfinance can put ticker as level 0 or 1
-    # depending on group_by; we requested group_by='ticker' so ticker is level 0.
     if not isinstance(raw.columns, pd.MultiIndex):
         return
     available = set(raw.columns.get_level_values(0))
@@ -170,23 +171,23 @@ def _iter_rows(raw: pd.DataFrame, yf_to_ticker: dict[str, str]):
         ticker = yf_to_ticker[sym]
         sub = raw[sym].dropna(how="all")
         for date, row in sub.iterrows():
-            yield _row_tuple(ticker, date, row)
+            yield _row_dict(ticker, date, row)
 
 
-def _row_tuple(ticker: str, date, row) -> tuple:
+def _row_dict(ticker: str, date, row) -> dict:
     ts = pd.Timestamp(date)
     if ts.tzinfo is None:
         ts = ts.tz_localize("UTC")
-    return (
-        ticker,
-        ts.strftime("%Y-%m-%d"),
-        int(ts.timestamp()),
-        _f(row.get("Open")),
-        _f(row.get("High")),
-        _f(row.get("Low")),
-        _f(row.get("Close")),
-        _f(row.get("Volume")),
-    )
+    return {
+        "ticker": ticker,
+        "date": ts.strftime("%Y-%m-%d"),
+        "ts": int(ts.timestamp()),
+        "open": _f(row.get("Open")),
+        "high": _f(row.get("High")),
+        "low": _f(row.get("Low")),
+        "close": _f(row.get("Close")),
+        "volume": _f(row.get("Volume")),
+    }
 
 
 def _f(x) -> float | None:
@@ -202,7 +203,6 @@ def _f(x) -> float | None:
 
 if __name__ == "__main__":
     import logging
-    import os
 
     logging.basicConfig(
         level=logging.INFO,
@@ -210,9 +210,6 @@ if __name__ == "__main__":
         datefmt="%H:%M:%S",
     )
     log = logging.getLogger(__name__)
-    db = os.getenv(
-        "DB_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "sentiment.db")
-    )
-    log.info("Updating prices into %s", db)
-    n = update_prices(db)
+    log.info("Updating prices...")
+    n = update_prices()
     log.info("Upserted %d rows", n)

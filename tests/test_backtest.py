@@ -13,7 +13,7 @@ WINDOW_SECS = WINDOW_HOURS * 3600
 
 def test_compute_hit_rates_empty_db(db_path):
     """No data anywhere => empty (but well-typed) DataFrame."""
-    df = compute_hit_rates(db_path, threshold=1.5)
+    df = compute_hit_rates(threshold=1.5)
     assert df.empty
     expected_cols = {"ticker", "n_signals", "hit_rate_1d", "hit_rate_3d", "hit_rate_7d"}
     assert expected_cols.issubset(set(df.columns))
@@ -31,7 +31,7 @@ def test_compute_hit_rates_no_prices(db_path):
         {"ticker": "BTC", "created_utc": spike_bucket_ts, "compound": 0.7} for _ in range(15)
     )
     seed_mentions(db_path, rows)
-    df = compute_hit_rates(db_path, threshold=1.5)
+    df = compute_hit_rates(threshold=1.5)
     assert df.empty
 
 
@@ -61,7 +61,7 @@ def test_hit_rate_bull_signal_with_price_rise(db_path):
             {"ticker": "BTC", "ts": signal_ts + 8 * 86400, "close": 130.0},
         ],
     )
-    df = compute_hit_rates(db_path, threshold=1.5)
+    df = compute_hit_rates(threshold=1.5)
     assert not df.empty
     btc = df[df["ticker"] == "BTC"].iloc[0]
     assert btc["n_signals"] >= 1
@@ -91,7 +91,7 @@ def test_hit_rate_unelapsed_horizon_is_excluded(db_path):
         db_path,
         [{"ticker": "BTC", "ts": signal_ts - 100, "close": 100.0}],
     )
-    df = compute_hit_rates(db_path, threshold=1.5)
+    df = compute_hit_rates(threshold=1.5)
     assert not df.empty
     btc = df[df["ticker"] == "BTC"].iloc[0]
     assert btc["hit_rate_1d"] is None
@@ -121,7 +121,7 @@ def test_hit_rate_includes_all_aggregate_row(db_path):
             {"ticker": "BTC", "ts": signal_ts + 8 * 86400, "close": 120.0},
         ],
     )
-    df = compute_hit_rates(db_path, threshold=1.5)
+    df = compute_hit_rates(threshold=1.5)
     tickers = set(df["ticker"])
     assert "ALL" in tickers
     assert "BTC" in tickers

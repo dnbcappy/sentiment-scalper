@@ -17,9 +17,12 @@ Method:
   is abnormal — raw sentiment on thin volume is noise.
 
 Two entry points:
-  - compute_signals(db_path):              live signals (current bucket vs baseline)
-  - compute_historical_signals(db_path):   walks every completed past bucket,
-                                            used by the backtester
+  - compute_signals():              live signals (current bucket vs baseline)
+  - compute_historical_signals():   walks every completed past bucket,
+                                     used by the backtester
+
+Database: uses the engine from db.get_engine(), so the same code runs against
+SQLite locally or Postgres in production.
 
 Known limitation: the live current bucket may be partially elapsed, biasing
   volume_z downward early in a window. Historical signals always evaluate
@@ -28,11 +31,13 @@ Known limitation: the live current bucket may be partially elapsed, biasing
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
+from sqlalchemy import text
+
+from db import get_engine
 
 # ---------- Constants ----------
 
@@ -59,7 +64,7 @@ _HIST_COLS = ["ticker", "signal_ts", "signal", "direction"]
 # ---------- Public API ----------
 
 
-def compute_signals(db_path: str, model: str | None = None) -> pd.DataFrame:
+def compute_signals(model: str | None = None) -> pd.DataFrame:
     """
     Live signals: evaluate the current (active) 6-hour bucket against
     the previous BASELINE_HOURS as baseline. Returns one row per ticker
@@ -67,7 +72,7 @@ def compute_signals(db_path: str, model: str | None = None) -> pd.DataFrame:
 
     If `model` is given, only mentions scored by that engine are used.
     """
-    df = _load(db_path, lookback_secs=BASELINE_HOURS * 3600, model=model)
+    df = _load(lookback_secs=BASELINE_HOURS * 3600, model=model)
     if df.empty:
         return pd.DataFrame(columns=_LIVE_COLS)
 
@@ -99,7 +104,7 @@ def compute_signals(db_path: str, model: str | None = None) -> pd.DataFrame:
 
 
 def compute_historical_signals(
-    db_path: str, threshold: float = VOLUME_Z_MIN, model: str | None = None
+    threshold: float = VOLUME_Z_MIN, model: str | None = None
 ) -> pd.DataFrame:
     """
     Walk every completed past bucket per ticker and emit signals where
@@ -109,8 +114,7 @@ def compute_historical_signals(
     Used by the backtester. The active bucket is excluded. If `model` is
     given, only mentions scored by that engine are considered.
     """
-    # Load all available data (no time cutoff) — historical backtest needs it
-    df = _load(db_path, lookback_secs=None, model=model)
+    df = _load(lookback_secs=None, model=model)
     if df.empty:
         return pd.DataFrame(columns=_HIST_COLS)
 
@@ -138,41 +142,36 @@ def compute_historical_signals(
     return pd.DataFrame(rows, columns=_HIST_COLS)
 
 
+def list_engines() -> list[str]:
+    """Return distinct sentiment models present in the mentions table."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT DISTINCT model FROM mentions WHERE model IS NOT NULL ORDER BY model")
+        ).fetchall()
+    return [r[0] for r in rows]
+
+
 # ---------- Internals ----------
 
 
-def _load(db_path: str, lookback_secs: int | None, model: str | None = None) -> pd.DataFrame:
+def _load(lookback_secs: int | None, model: str | None = None) -> pd.DataFrame:
     where: list[str] = []
-    params: list = []
+    params: dict = {}
     if lookback_secs is not None:
-        cutoff = int(datetime.now(timezone.utc).timestamp()) - lookback_secs
-        where.append("created_utc >= ?")
-        params.append(cutoff)
+        params["cutoff"] = int(datetime.now(timezone.utc).timestamp()) - lookback_secs
+        where.append("created_utc >= :cutoff")
     if model is not None:
-        where.append("model = ?")
-        params.append(model)
+        params["model"] = model
+        where.append("model = :model")
 
     sql = "SELECT ticker, created_utc, compound FROM mentions"
     if where:
         sql += " WHERE " + " AND ".join(where)
 
-    conn = sqlite3.connect(db_path)
-    try:
-        return pd.read_sql_query(sql, conn, params=params)
-    finally:
-        conn.close()
-
-
-def list_engines(db_path: str) -> list[str]:
-    """Return distinct sentiment models present in the mentions table."""
-    conn = sqlite3.connect(db_path)
-    try:
-        rows = conn.execute(
-            "SELECT DISTINCT model FROM mentions WHERE model IS NOT NULL ORDER BY model"
-        ).fetchall()
-        return [r[0] for r in rows]
-    finally:
-        conn.close()
+    engine = get_engine()
+    with engine.connect() as conn:
+        return pd.read_sql_query(text(sql), conn, params=params)
 
 
 def _signal_at_bucket(grp: pd.DataFrame, target_bucket: int) -> dict | None:

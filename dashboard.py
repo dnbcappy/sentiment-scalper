@@ -1,8 +1,10 @@
 """
 Sentiment Scalper - Dashboard
 -----------------------------
-Streamlit dashboard for visualizing the SQLite database produced
-by sentiment_scalper.py.
+Streamlit dashboard for visualizing the data produced by sentiment_scalper.py.
+
+Backend: SQLite locally by default. Set DATABASE_URL=postgresql://... to point
+at a hosted Postgres (Supabase, Cloud SQL, etc.) — same code path either way.
 
 Setup:
     pip install -r requirements.txt
@@ -11,73 +13,65 @@ Run:
     streamlit run dashboard.py
 """
 
-import os
-import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import altair as alt
 import pandas as pd
 import streamlit as st
+from sqlalchemy import text
 
 from backtest import compute_hit_rates
+from db import get_engine
 from prices import get_prices, update_prices
 from signals import compute_signals, list_engines
 
-DB_PATH = os.getenv(
-    "DB_PATH",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "sentiment.db"),
-)
-
 st.set_page_config(page_title="Sentiment Scalper", layout="wide")
 
-# ---------- Data loading ----------
+# ---------- Data loading (cached) ----------
 
 
 @st.cache_data(ttl=60)
 def load_data(hours: int, model: str | None = None) -> pd.DataFrame:
     cutoff = int((datetime.now(timezone.utc) - timedelta(hours=hours)).timestamp())
-    sql = "SELECT * FROM mentions WHERE created_utc >= ?"
-    params: list = [cutoff]
+    where = ["created_utc >= :cutoff"]
+    params: dict = {"cutoff": cutoff}
     if model is not None:
-        sql += " AND model = ?"
-        params.append(model)
-    sql += " ORDER BY created_utc DESC"
+        where.append("model = :model")
+        params["model"] = model
+    sql = "SELECT * FROM mentions WHERE " + " AND ".join(where) + " ORDER BY created_utc DESC"
 
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        df = pd.read_sql_query(sql, conn, params=params)
-    finally:
-        conn.close()
+    with get_engine().connect() as conn:
+        df = pd.read_sql_query(text(sql), conn, params=params)
     if not df.empty:
         df["timestamp"] = pd.to_datetime(df["created_utc"], unit="s", utc=True)
     return df
 
 
 @st.cache_data(ttl=60)
-def load_signals(db_path: str, model: str | None = None) -> pd.DataFrame:
-    return compute_signals(db_path, model=model)
+def load_signals_cached(model: str | None = None) -> pd.DataFrame:
+    return compute_signals(model=model)
 
 
 @st.cache_data(ttl=3600)
-def refresh_prices(db_path: str) -> int:
-    return update_prices(db_path)
+def refresh_prices_cached() -> int:
+    return update_prices()
 
 
 @st.cache_data(ttl=3600)
-def load_prices(db_path: str) -> pd.DataFrame:
-    return get_prices(db_path)
+def load_prices_cached() -> pd.DataFrame:
+    return get_prices()
 
 
 @st.cache_data(ttl=600)
-def load_hit_rates(db_path: str, threshold: float, model: str | None = None) -> pd.DataFrame:
-    return compute_hit_rates(db_path, threshold, model=model)
+def load_hit_rates_cached(threshold: float, model: str | None = None) -> pd.DataFrame:
+    return compute_hit_rates(threshold, model=model)
 
 
-# ---------- Price refresh (cached 1h) ----------
+# ---------- Price refresh on load (cached 1h) ----------
 
 try:
     with st.spinner("Refreshing prices (cached 1h)..."):
-        refresh_prices(DB_PATH)
+        refresh_prices_cached()
 except Exception as e:
     st.warning(f"Price refresh failed: {e}. Continuing with cached data.")
 
@@ -89,11 +83,12 @@ signal_threshold = st.sidebar.slider(
     "Signal threshold", min_value=0.0, max_value=5.0, value=1.5, step=0.1
 )
 
-available_engines = list_engines(DB_PATH)
-if available_engines:
-    selected_engine = st.sidebar.selectbox("Sentiment engine", available_engines, index=0)
-else:
-    selected_engine = None
+available_engines = list_engines()
+selected_engine = (
+    st.sidebar.selectbox("Sentiment engine", available_engines, index=0)
+    if available_engines
+    else None
+)
 
 df = load_data(hours, model=selected_engine)
 
@@ -122,7 +117,7 @@ st.caption(f"Last {hours}h • {len(df):,} mentions • engine: {selected_engine
 
 st.subheader("Active signals right now")
 
-signals_df = load_signals(DB_PATH, model=selected_engine)
+signals_df = load_signals_cached(model=selected_engine)
 active = (
     signals_df[signals_df["signal"].abs() >= signal_threshold]
     if not signals_df.empty
@@ -201,7 +196,7 @@ st.bar_chart(vol_ts)
 # ---------- Sentiment vs Price (per ticker) ----------
 
 st.subheader("Sentiment vs Price")
-prices_df = load_prices(DB_PATH)
+prices_df = load_prices_cached()
 
 if prices_df.empty:
     st.info("No price data cached yet.")
@@ -212,7 +207,6 @@ else:
         key="overlay_ticker",
     )
 
-    # Sentiment: mentions for this ticker, hourly mean within the lookback window
     sent_one = (
         df[df["ticker"] == overlay_ticker]
         .set_index("timestamp")["compound"]
@@ -222,7 +216,6 @@ else:
         .reset_index()
     )
 
-    # Prices: same ticker, restrict to the lookback window for visual coherence
     since_ts = int((datetime.now(timezone.utc) - timedelta(hours=hours)).timestamp())
     price_one = prices_df[(prices_df["ticker"] == overlay_ticker) & (prices_df["ts"] >= since_ts)][
         ["timestamp", "close"]
@@ -278,7 +271,7 @@ st.caption(
     "Horizons that haven't elapsed yet are excluded (still-open positions)."
 )
 
-hit_df = load_hit_rates(DB_PATH, signal_threshold, model=selected_engine)
+hit_df = load_hit_rates_cached(signal_threshold, model=selected_engine)
 if hit_df.empty:
     st.info("No backtest results yet — need historical signals plus cached price data.")
 else:
@@ -308,7 +301,7 @@ if len(available_engines) >= 2:
     )
     compare_frames = []
     for engine_name in available_engines:
-        per_engine = load_hit_rates(DB_PATH, signal_threshold, model=engine_name)
+        per_engine = load_hit_rates_cached(signal_threshold, model=engine_name)
         if per_engine.empty:
             continue
         per_engine = per_engine.copy()

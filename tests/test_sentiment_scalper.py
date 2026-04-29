@@ -66,9 +66,7 @@ def _setup_old_format_row(db_path: str, row_id: str, model: str) -> None:
 
 def test_migrate_ids_appends_model_suffix(db_path):
     _setup_old_format_row(db_path, "newsapi_abc__BTC", "vader")
-    conn = sqlite3.connect(db_path)
-    n = _migrate_ids_v2(conn)
-    conn.close()
+    n = _migrate_ids_v2()
     assert n == 1
 
     conn = sqlite3.connect(db_path)
@@ -80,19 +78,15 @@ def test_migrate_ids_appends_model_suffix(db_path):
 def test_migrate_ids_idempotent(db_path):
     """Running migration twice yields no changes the second time."""
     _setup_old_format_row(db_path, "newsapi_abc__BTC", "vader")
-    conn = sqlite3.connect(db_path)
-    first = _migrate_ids_v2(conn)
-    second = _migrate_ids_v2(conn)
-    conn.close()
+    first = _migrate_ids_v2()
+    second = _migrate_ids_v2()
     assert first == 1
     assert second == 0
 
 
 def test_migrate_ids_skips_already_migrated_rows(db_path):
     _setup_old_format_row(db_path, "already__BTC__vader", "vader")
-    conn = sqlite3.connect(db_path)
-    n = _migrate_ids_v2(conn)
-    conn.close()
+    n = _migrate_ids_v2()
     assert n == 0
 
 
@@ -100,9 +94,7 @@ def test_migrate_ids_handles_mixed_state(db_path):
     """Some rows old, some new — only the old ones get migrated."""
     _setup_old_format_row(db_path, "old__BTC", "vader")
     _setup_old_format_row(db_path, "new__BTC__vader", "vader")
-    conn = sqlite3.connect(db_path)
-    n = _migrate_ids_v2(conn)
-    conn.close()
+    n = _migrate_ids_v2()
     assert n == 1
 
     conn = sqlite3.connect(db_path)

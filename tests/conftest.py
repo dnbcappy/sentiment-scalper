@@ -1,4 +1,9 @@
-"""Shared fixtures and helpers for the test suite."""
+"""Shared fixtures and helpers for the test suite.
+
+Strategy: each test gets its own SQLite file in a tmp_path, and DATABASE_URL
+is monkeypatched to point at it. The cached engine is reset before and after
+the test so each test runs in isolation.
+"""
 
 from __future__ import annotations
 
@@ -9,8 +14,12 @@ import pytest
 
 
 @pytest.fixture
-def db_path(tmp_path) -> str:
-    """A fresh sentiment.db with the production schema and no rows."""
+def db_path(tmp_path, monkeypatch) -> str:
+    """A fresh sentiment.db with the production schema and no rows.
+
+    Sets DATABASE_URL to point at this file so all production code paths
+    (which use db.get_engine()) automatically use the temp DB.
+    """
     path = tmp_path / "sentiment.db"
     conn = sqlite3.connect(path)
     conn.execute("""
@@ -30,7 +39,15 @@ def db_path(tmp_path) -> str:
     """)
     conn.commit()
     conn.close()
-    return str(path)
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{path}")
+
+    # Clear the cached engine so the new DATABASE_URL takes effect this test
+    from db import reset_engine
+
+    reset_engine()
+    yield str(path)
+    reset_engine()
 
 
 def seed_mentions(db_path: str, rows: list[dict[str, Any]]) -> None:

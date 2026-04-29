@@ -29,18 +29,18 @@ _OUT_COLS = (
 )
 
 
-def compute_hit_rates(db_path: str, threshold: float, model: str | None = None) -> pd.DataFrame:
+def compute_hit_rates(threshold: float, model: str | None = None) -> pd.DataFrame:
     """
     Per-ticker hit rates at 1d/3d/7d horizons, plus an aggregate 'ALL' row.
     Returns an empty (but well-typed) DataFrame if there are no signals or
     no price data yet. If `model` is given, only mentions scored by that
     engine are used to compute the historical signals.
     """
-    sigs = compute_historical_signals(db_path, threshold=threshold, model=model)
+    sigs = compute_historical_signals(threshold=threshold, model=model)
     if sigs.empty:
         return _empty()
 
-    prices = get_prices(db_path)
+    prices = get_prices()
     if prices.empty:
         return _empty()
 
@@ -109,10 +109,8 @@ def _aggregate(detail: pd.DataFrame) -> dict:
 
 
 def _close_at_or_before(ts_array, close_array, ts: int) -> float | None:
-    """
-    Binary-search for the most recent close at or before ts.
-    Returns None if no such bar exists or its close is NaN.
-    """
+    """Binary-search for the most recent close at or before ts.
+    Returns None if no such bar exists or its close is NaN."""
     import numpy as np
 
     if len(ts_array) == 0:
