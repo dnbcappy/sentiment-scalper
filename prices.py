@@ -21,11 +21,11 @@ import yfinance as yf
 # ---------- Symbol mapping ----------
 
 YF_SYMBOL = {
-    "BTC":  "BTC-USD",
-    "ETH":  "ETH-USD",
+    "BTC": "BTC-USD",
+    "ETH": "ETH-USD",
     "USDT": "USDT-USD",
     "USDC": "USDC-USD",
-    "SPY":  "SPY",
+    "SPY": "SPY",
     "AAPL": "AAPL",
     "TSLA": "TSLA",
     "NVDA": "NVDA",
@@ -36,6 +36,7 @@ DEFAULT_LOOKBACK_DAYS = 60
 
 
 # ---------- Schema ----------
+
 
 def init_prices_table(conn: sqlite3.Connection) -> None:
     conn.execute("""
@@ -57,9 +58,10 @@ def init_prices_table(conn: sqlite3.Connection) -> None:
 
 # ---------- Public API ----------
 
-def update_prices(db_path: str,
-                  tickers: list[str] | None = None,
-                  lookback_days: int = DEFAULT_LOOKBACK_DAYS) -> int:
+
+def update_prices(
+    db_path: str, tickers: list[str] | None = None, lookback_days: int = DEFAULT_LOOKBACK_DAYS
+) -> int:
     """
     Fetch daily OHLC for the given tickers and upsert into the prices table.
     Returns the number of rows touched.
@@ -71,7 +73,7 @@ def update_prices(db_path: str,
     if not yf_to_ticker:
         return 0
 
-    end   = datetime.now(timezone.utc)
+    end = datetime.now(timezone.utc)
     start = end - timedelta(days=lookback_days)
 
     raw = yf.download(
@@ -93,25 +95,28 @@ def update_prices(db_path: str,
     conn = sqlite3.connect(db_path)
     try:
         init_prices_table(conn)
-        cur = conn.executemany("""
+        cur = conn.executemany(
+            """
             INSERT OR REPLACE INTO prices
             (ticker, date, ts, open, high, low, close, volume)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, rows)
+        """,
+            rows,
+        )
         conn.commit()
         return cur.rowcount
     finally:
         conn.close()
 
 
-def get_prices(db_path: str,
-               ticker: str | None = None,
-               since_ts: int | None = None) -> pd.DataFrame:
+def get_prices(
+    db_path: str, ticker: str | None = None, since_ts: int | None = None
+) -> pd.DataFrame:
     """
     Read cached prices. If ticker is None, returns all tickers.
     Adds a 'timestamp' column (UTC datetime) for plotting convenience.
     """
-    sql   = "SELECT * FROM prices"
+    sql = "SELECT * FROM prices"
     where = []
     params: list = []
     if ticker is not None:
@@ -129,8 +134,9 @@ def get_prices(db_path: str,
         df = pd.read_sql_query(sql, conn, params=params)
     except pd.io.sql.DatabaseError:
         # Table doesn't exist yet — first run before update_prices was called
-        return pd.DataFrame(columns=["ticker", "date", "ts", "open", "high",
-                                      "low", "close", "volume", "timestamp"])
+        return pd.DataFrame(
+            columns=["ticker", "date", "ts", "open", "high", "low", "close", "volume", "timestamp"]
+        )
     finally:
         conn.close()
 
@@ -140,6 +146,7 @@ def get_prices(db_path: str,
 
 
 # ---------- Internals ----------
+
 
 def _iter_rows(raw: pd.DataFrame, yf_to_ticker: dict[str, str]):
     """Flatten the yfinance frame (single or multi-ticker) into DB rows."""
@@ -195,7 +202,10 @@ def _f(x) -> float | None:
 
 if __name__ == "__main__":
     import os
-    db = os.getenv("DB_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "sentiment.db"))
+
+    db = os.getenv(
+        "DB_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "sentiment.db")
+    )
     print(f"Updating prices into {db} ...")
     n = update_prices(db)
     print(f"Upserted {n} rows.")

@@ -32,6 +32,7 @@ st.set_page_config(page_title="Sentiment Scalper", layout="wide")
 
 # ---------- Data loading ----------
 
+
 @st.cache_data(ttl=60)
 def load_data(hours: int) -> pd.DataFrame:
     cutoff = int((datetime.now(timezone.utc) - timedelta(hours=hours)).timestamp())
@@ -39,7 +40,8 @@ def load_data(hours: int) -> pd.DataFrame:
     try:
         df = pd.read_sql_query(
             "SELECT * FROM mentions WHERE created_utc >= ? ORDER BY created_utc DESC",
-            conn, params=(cutoff,),
+            conn,
+            params=(cutoff,),
         )
     finally:
         conn.close()
@@ -79,8 +81,10 @@ except Exception as e:
 # ---------- Sidebar ----------
 
 st.sidebar.title("Filters")
-hours            = st.sidebar.slider("Lookback (hours)", min_value=1, max_value=168, value=24)
-signal_threshold = st.sidebar.slider("Signal threshold", min_value=0.0, max_value=5.0, value=1.5, step=0.1)
+hours = st.sidebar.slider("Lookback (hours)", min_value=1, max_value=168, value=24)
+signal_threshold = st.sidebar.slider(
+    "Signal threshold", min_value=0.0, max_value=5.0, value=1.5, step=0.1
+)
 
 df = load_data(hours)
 
@@ -89,9 +93,9 @@ if df.empty:
     st.warning("No data yet. Run `python sentiment_scalper.py` first.")
     st.stop()
 
-tickers          = sorted(df["ticker"].unique())
-selected         = st.sidebar.multiselect("Tickers", tickers, default=tickers)
-sources          = sorted(df["source"].unique())
+tickers = sorted(df["ticker"].unique())
+selected = st.sidebar.multiselect("Tickers", tickers, default=tickers)
+sources = sorted(df["source"].unique())
 selected_sources = st.sidebar.multiselect("Sources", sources, default=sources)
 
 df = df[df["ticker"].isin(selected) & df["source"].isin(selected_sources)]
@@ -103,7 +107,9 @@ if df.empty:
 # ---------- Header ----------
 
 st.title("📈 Sentiment Scalper")
-st.caption(f"Last {hours}h • {len(df):,} mentions • models: {', '.join(df['model'].dropna().unique()) or 'n/a'}")
+st.caption(
+    f"Last {hours}h • {len(df):,} mentions • models: {', '.join(df['model'].dropna().unique()) or 'n/a'}"
+)
 
 # ---------- Active signals ----------
 
@@ -120,12 +126,14 @@ if active.empty:
     st.info("No signals above threshold. Lower the slider or run the scraper to collect more data.")
 else:
     st.dataframe(
-        active.style.format({
-            "signal":        "{:+.2f}",
-            "volume_z":      "{:+.2f}",
-            "sentiment_z":   "{:+.2f}",
-            "current_sent":  "{:+.3f}",
-        }),
+        active.style.format(
+            {
+                "signal": "{:+.2f}",
+                "volume_z": "{:+.2f}",
+                "sentiment_z": "{:+.2f}",
+                "current_sent": "{:+.3f}",
+            }
+        ),
         use_container_width=True,
         hide_index=True,
     )
@@ -135,7 +143,7 @@ else:
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Mentions", f"{len(df):,}")
 c2.metric("Avg sentiment", f"{df['compound'].mean():+.3f}")
-c3.metric("Bullish (>0.2)", int((df["compound"] >  0.2).sum()))
+c3.metric("Bullish (>0.2)", int((df["compound"] > 0.2).sum()))
 c4.metric("Bearish (<-0.2)", int((df["compound"] < -0.2).sum()))
 
 # ---------- Per-ticker summary ----------
@@ -143,27 +151,30 @@ c4.metric("Bearish (<-0.2)", int((df["compound"] < -0.2).sum()))
 st.subheader("Per-ticker summary")
 summary = (
     df.groupby("ticker")
-      .agg(mentions=("id", "count"),
-           avg_sentiment=("compound", "mean"),
-           bullish=("compound", lambda s: int((s >  0.2).sum())),
-           bearish=("compound", lambda s: int((s < -0.2).sum())))
-      .sort_values("mentions", ascending=False)
+    .agg(
+        mentions=("id", "count"),
+        avg_sentiment=("compound", "mean"),
+        bullish=("compound", lambda s: int((s > 0.2).sum())),
+        bearish=("compound", lambda s: int((s < -0.2).sum())),
+    )
+    .sort_values("mentions", ascending=False)
 )
 summary["bull_bear_ratio"] = (summary["bullish"] + 1) / (summary["bearish"] + 1)
-st.dataframe(summary.style.format({
-    "avg_sentiment": "{:+.3f}",
-    "bull_bear_ratio": "{:.2f}",
-}), use_container_width=True)
+st.dataframe(
+    summary.style.format(
+        {
+            "avg_sentiment": "{:+.3f}",
+            "bull_bear_ratio": "{:.2f}",
+        }
+    ),
+    use_container_width=True,
+)
 
 # ---------- Sentiment over time ----------
 
 st.subheader("Avg sentiment per ticker (1h buckets)")
 sent_ts = (
-    df.set_index("timestamp")
-      .groupby("ticker")["compound"]
-      .resample("1h")
-      .mean()
-      .unstack("ticker")
+    df.set_index("timestamp").groupby("ticker")["compound"].resample("1h").mean().unstack("ticker")
 )
 st.line_chart(sent_ts)
 
@@ -172,11 +183,11 @@ st.line_chart(sent_ts)
 st.subheader("Mention volume per ticker (1h buckets)")
 vol_ts = (
     df.set_index("timestamp")
-      .groupby("ticker")["id"]
-      .resample("1h")
-      .count()
-      .unstack("ticker")
-      .fillna(0)
+    .groupby("ticker")["id"]
+    .resample("1h")
+    .count()
+    .unstack("ticker")
+    .fillna(0)
 )
 st.bar_chart(vol_ts)
 
@@ -206,44 +217,50 @@ else:
 
     # Prices: same ticker, restrict to the lookback window for visual coherence
     since_ts = int((datetime.now(timezone.utc) - timedelta(hours=hours)).timestamp())
-    price_one = (
-        prices_df[(prices_df["ticker"] == overlay_ticker) & (prices_df["ts"] >= since_ts)]
-        [["timestamp", "close"]]
-        .dropna()
-    )
+    price_one = prices_df[(prices_df["ticker"] == overlay_ticker) & (prices_df["ts"] >= since_ts)][
+        ["timestamp", "close"]
+    ].dropna()
 
     if sent_one.empty or price_one.empty:
         st.info(f"Not enough overlapping data for {overlay_ticker} in the last {hours}h.")
     else:
         sent_layer = (
             alt.Chart(sent_one)
-               .mark_line(color="#4c78a8")
-               .encode(
-                   x=alt.X("timestamp:T", title="Time"),
-                   y=alt.Y("compound:Q",
-                           title="Avg sentiment",
-                           axis=alt.Axis(titleColor="#4c78a8"),
-                           scale=alt.Scale(zero=False)),
-               )
+            .mark_line(color="#4c78a8")
+            .encode(
+                x=alt.X("timestamp:T", title="Time"),
+                y=alt.Y(
+                    "compound:Q",
+                    title="Avg sentiment",
+                    axis=alt.Axis(titleColor="#4c78a8"),
+                    scale=alt.Scale(zero=False),
+                ),
+            )
         )
         price_layer = (
             alt.Chart(price_one)
-               .mark_line(color="#f58518", point=True)
-               .encode(
-                   x=alt.X("timestamp:T"),
-                   y=alt.Y("close:Q",
-                           title="Close price (USD)",
-                           axis=alt.Axis(titleColor="#f58518"),
-                           scale=alt.Scale(zero=False)),
-               )
+            .mark_line(color="#f58518", point=True)
+            .encode(
+                x=alt.X("timestamp:T"),
+                y=alt.Y(
+                    "close:Q",
+                    title="Close price (USD)",
+                    axis=alt.Axis(titleColor="#f58518"),
+                    scale=alt.Scale(zero=False),
+                ),
+            )
         )
         chart = (
             alt.layer(sent_layer, price_layer)
-               .resolve_scale(y="independent")
-               .properties(height=400, title=f"{overlay_ticker}: sentiment (1h) vs price (daily close)")
+            .resolve_scale(y="independent")
+            .properties(
+                height=400, title=f"{overlay_ticker}: sentiment (1h) vs price (daily close)"
+            )
         )
         st.altair_chart(chart, use_container_width=True)
-        st.caption("Note: sentiment is hourly, price is daily close. A 24h lookback may show only 1 price point.")
+        st.caption(
+            "Note: sentiment is hourly, price is daily close. A 24h lookback may show only 1 price point."
+        )
 
 # ---------- Did it work? — backtest hit rate ----------
 
@@ -259,14 +276,17 @@ if hit_df.empty:
     st.info("No backtest results yet — need historical signals plus cached price data.")
 else:
     st.dataframe(
-        hit_df.style.format({
-            "hit_rate_1d":   "{:.1%}",
-            "hit_rate_3d":   "{:.1%}",
-            "hit_rate_7d":   "{:.1%}",
-            "avg_return_1d": "{:+.2%}",
-            "avg_return_3d": "{:+.2%}",
-            "avg_return_7d": "{:+.2%}",
-        }, na_rep="—"),
+        hit_df.style.format(
+            {
+                "hit_rate_1d": "{:.1%}",
+                "hit_rate_3d": "{:.1%}",
+                "hit_rate_7d": "{:.1%}",
+                "avg_return_1d": "{:+.2%}",
+                "avg_return_3d": "{:+.2%}",
+                "avg_return_7d": "{:+.2%}",
+            },
+            na_rep="—",
+        ),
         use_container_width=True,
         hide_index=True,
     )
@@ -275,7 +295,5 @@ else:
 
 st.subheader("Recent mentions")
 recent = df[["timestamp", "ticker", "source", "subreddit", "compound", "text"]].head(100).copy()
-recent["text"] = recent["text"].fillna("").apply(
-    lambda t: t[:240] + "…" if len(t) > 240 else t
-)
+recent["text"] = recent["text"].fillna("").apply(lambda t: t[:240] + "…" if len(t) > 240 else t)
 st.dataframe(recent, use_container_width=True, hide_index=True)

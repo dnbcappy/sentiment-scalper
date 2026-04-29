@@ -36,22 +36,28 @@ import pandas as pd
 
 # ---------- Constants ----------
 
-WINDOW_HOURS     = 6      # length of each bucket (hours)
-BASELINE_HOURS   = 168    # how far back to build the baseline (7 days)
-VOLUME_Z_MIN     = 1.5    # minimum |volume_z| before a signal fires
-MIN_HIST_BUCKETS = 3      # tickers with fewer historical buckets are skipped
+WINDOW_HOURS = 6  # length of each bucket (hours)
+BASELINE_HOURS = 168  # how far back to build the baseline (7 days)
+VOLUME_Z_MIN = 1.5  # minimum |volume_z| before a signal fires
+MIN_HIST_BUCKETS = 3  # tickers with fewer historical buckets are skipped
 
-_WINDOW_SECS  = WINDOW_HOURS * 3600
+_WINDOW_SECS = WINDOW_HOURS * 3600
 _BUCKETS_BACK = BASELINE_HOURS // WINDOW_HOURS
 
 _LIVE_COLS = [
-    "ticker", "direction", "signal",
-    "volume_z", "sentiment_z", "current_count", "current_sent",
+    "ticker",
+    "direction",
+    "signal",
+    "volume_z",
+    "sentiment_z",
+    "current_count",
+    "current_sent",
 ]
 _HIST_COLS = ["ticker", "signal_ts", "signal", "direction"]
 
 
 # ---------- Public API ----------
+
 
 def compute_signals(db_path: str) -> pd.DataFrame:
     """
@@ -72,28 +78,25 @@ def compute_signals(db_path: str) -> pd.DataFrame:
         s = _signal_at_bucket(grp, current_bucket)
         if s is None:
             continue
-        rows.append({
-            "ticker":        ticker,
-            "direction":     _direction(s["signal"]),
-            "signal":        round(s["signal"], 2),
-            "volume_z":      round(s["volume_z"], 2),
-            "sentiment_z":   round(s["sentiment_z"], 2),
-            "current_count": s["current_count"],
-            "current_sent":  round(s["current_sent"], 3),
-        })
+        rows.append(
+            {
+                "ticker": ticker,
+                "direction": _direction(s["signal"]),
+                "signal": round(s["signal"], 2),
+                "volume_z": round(s["volume_z"], 2),
+                "sentiment_z": round(s["sentiment_z"], 2),
+                "current_count": s["current_count"],
+                "current_sent": round(s["current_sent"], 3),
+            }
+        )
 
     if not rows:
         return pd.DataFrame(columns=_LIVE_COLS)
 
-    return (
-        pd.DataFrame(rows)
-          .sort_values("signal", key=abs, ascending=False)
-          .reset_index(drop=True)
-    )
+    return pd.DataFrame(rows).sort_values("signal", key=abs, ascending=False).reset_index(drop=True)
 
 
-def compute_historical_signals(db_path: str,
-                                threshold: float = VOLUME_Z_MIN) -> pd.DataFrame:
+def compute_historical_signals(db_path: str, threshold: float = VOLUME_Z_MIN) -> pd.DataFrame:
     """
     Walk every completed past bucket per ticker and emit signals where
     |signal| >= threshold. Each row is a (ticker, end-of-bucket timestamp,
@@ -118,17 +121,20 @@ def compute_historical_signals(db_path: str,
             s = _signal_at_bucket(grp, int(b))
             if s is None or abs(s["signal"]) < threshold:
                 continue
-            rows.append({
-                "ticker":    ticker,
-                "signal_ts": (int(b) + 1) * _WINDOW_SECS,
-                "signal":    round(s["signal"], 2),
-                "direction": _direction(s["signal"]),
-            })
+            rows.append(
+                {
+                    "ticker": ticker,
+                    "signal_ts": (int(b) + 1) * _WINDOW_SECS,
+                    "signal": round(s["signal"], 2),
+                    "direction": _direction(s["signal"]),
+                }
+            )
 
     return pd.DataFrame(rows, columns=_HIST_COLS)
 
 
 # ---------- Internals ----------
+
 
 def _load(db_path: str, lookback_secs: int | None) -> pd.DataFrame:
     conn = sqlite3.connect(db_path)
@@ -141,7 +147,8 @@ def _load(db_path: str, lookback_secs: int | None) -> pd.DataFrame:
         cutoff = int(datetime.now(timezone.utc).timestamp()) - lookback_secs
         return pd.read_sql_query(
             "SELECT ticker, created_utc, compound FROM mentions WHERE created_utc >= ?",
-            conn, params=(cutoff,),
+            conn,
+            params=(cutoff,),
         )
     finally:
         conn.close()
@@ -165,29 +172,31 @@ def _signal_at_bucket(grp: pd.DataFrame, target_bucket: int) -> dict | None:
         return None
 
     count_mean = bucket_stats["count"].mean()
-    count_std  = bucket_stats["count"].std(ddof=1)
-    sent_mean  = bucket_stats["avg_sent"].mean()
-    sent_std   = bucket_stats["avg_sent"].std(ddof=1)
+    count_std = bucket_stats["count"].std(ddof=1)
+    sent_mean = bucket_stats["avg_sent"].mean()
+    sent_std = bucket_stats["avg_sent"].std(ddof=1)
 
     current_count = len(curr)
     # No activity in target bucket: sentiment defaults to baseline mean (z=0)
-    current_sent  = float(curr["compound"].mean()) if not curr.empty else sent_mean
+    current_sent = float(curr["compound"].mean()) if not curr.empty else sent_mean
 
-    vol_z  = (current_count - count_mean) / count_std if count_std > 0 else 0.0
-    sent_z = (current_sent  - sent_mean)  / sent_std  if sent_std  > 0 else 0.0
+    vol_z = (current_count - count_mean) / count_std if count_std > 0 else 0.0
+    sent_z = (current_sent - sent_mean) / sent_std if sent_std > 0 else 0.0
 
     signal = float(np.sign(sent_z) * abs(vol_z)) if abs(vol_z) > VOLUME_Z_MIN else 0.0
 
     return {
-        "signal":        signal,
-        "volume_z":      vol_z,
-        "sentiment_z":   sent_z,
+        "signal": signal,
+        "volume_z": vol_z,
+        "sentiment_z": sent_z,
         "current_count": current_count,
-        "current_sent":  current_sent,
+        "current_sent": current_sent,
     }
 
 
 def _direction(signal: float) -> str:
-    if signal > 0: return "BULL"
-    if signal < 0: return "BEAR"
+    if signal > 0:
+        return "BULL"
+    if signal < 0:
+        return "BEAR"
     return "—"

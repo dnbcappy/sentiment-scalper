@@ -1,0 +1,4 @@
+# Development dependencies (linting, testing). Not needed at runtime.
+# Install with: pip install -r requirements-dev.txt
+ruff>=0.6
+pytest>=8.0

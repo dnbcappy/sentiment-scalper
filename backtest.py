@@ -24,7 +24,7 @@ HORIZONS_DAYS = (1, 3, 7)
 
 _OUT_COLS = (
     ["ticker", "n_signals"]
-    + [f"hit_rate_{h}d"   for h in HORIZONS_DAYS]
+    + [f"hit_rate_{h}d" for h in HORIZONS_DAYS]
     + [f"avg_return_{h}d" for h in HORIZONS_DAYS]
 )
 
@@ -47,16 +47,14 @@ def compute_hit_rates(db_path: str, threshold: float) -> pd.DataFrame:
     if detail.empty:
         return _empty()
 
-    rows = [
-        {"ticker": ticker, **_aggregate(group)}
-        for ticker, group in detail.groupby("ticker")
-    ]
+    rows = [{"ticker": ticker, **_aggregate(group)} for ticker, group in detail.groupby("ticker")]
     rows.append({"ticker": "ALL", **_aggregate(detail)})
 
     return pd.DataFrame(rows)[_OUT_COLS]
 
 
 # ---------- Internals ----------
+
 
 def _build_detail(sigs: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
     """One row per signal. Horizon outcomes are NaN if the horizon hasn't
@@ -82,12 +80,12 @@ def _build_detail(sigs: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
                 if exit_ts > latest_ts:
                     # Horizon not yet reached — position still open
                     row[f"return_{h}d"] = None
-                    row[f"hit_{h}d"]    = None
+                    row[f"hit_{h}d"] = None
                     continue
                 exit_close = _close_at_or_before(ts_array, close_array, exit_ts)
                 if exit_close is None:
                     row[f"return_{h}d"] = None
-                    row[f"hit_{h}d"]    = None
+                    row[f"hit_{h}d"] = None
                     continue
                 ret = (exit_close - entry) / entry
                 row[f"return_{h}d"] = ret
@@ -104,7 +102,7 @@ def _aggregate(detail: pd.DataFrame) -> dict:
     for h in HORIZONS_DAYS:
         hits = detail[f"hit_{h}d"].dropna()
         rets = detail[f"return_{h}d"].dropna()
-        out[f"hit_rate_{h}d"]   = float(hits.mean()) if len(hits) else None
+        out[f"hit_rate_{h}d"] = float(hits.mean()) if len(hits) else None
         out[f"avg_return_{h}d"] = float(rets.mean()) if len(rets) else None
     return out
 
@@ -115,6 +113,7 @@ def _close_at_or_before(ts_array, close_array, ts: int) -> float | None:
     Returns None if no such bar exists or its close is NaN.
     """
     import numpy as np
+
     if len(ts_array) == 0:
         return None
     idx = np.searchsorted(ts_array, ts, side="right") - 1
