@@ -69,7 +69,7 @@ def load_hit_rates_cached(threshold: float, model: str | None = None) -> pd.Data
 # ---------- Sidebar ----------
 
 st.sidebar.title("Filters")
-hours = st.sidebar.slider("Lookback (hours)", min_value=1, max_value=168, value=24)
+hours = st.sidebar.slider("Lookback (hours)", min_value=1, max_value=168, value=168)
 signal_threshold = st.sidebar.slider(
     "Signal threshold", min_value=0.0, max_value=5.0, value=1.5, step=0.1
 )
