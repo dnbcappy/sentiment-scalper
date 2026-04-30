@@ -71,6 +71,12 @@ def compute_signals(model: str | None = None) -> pd.DataFrame:
     that has enough history, ranked by absolute signal strength.
 
     If `model` is given, only mentions scored by that engine are used.
+
+    The active bucket is partially elapsed, so its raw count is biased
+    low against fully-completed baseline buckets. We pro-rate the count
+    by the fraction of the bucket that has elapsed, so the z-score
+    compares like-with-like (estimated full-bucket count vs baseline
+    full-bucket counts).
     """
     df = _load(lookback_secs=BASELINE_HOURS * 3600, model=model)
     if df.empty:
@@ -79,10 +85,12 @@ def compute_signals(model: str | None = None) -> pd.DataFrame:
     df["bucket"] = df["created_utc"] // _WINDOW_SECS
     now_ts = int(datetime.now(timezone.utc).timestamp())
     current_bucket = now_ts // _WINDOW_SECS
+    elapsed_secs = now_ts - current_bucket * _WINDOW_SECS
+    elapsed_fraction = max(elapsed_secs / _WINDOW_SECS, 1e-6)  # avoid div-by-zero
 
     rows = []
     for ticker, grp in df.groupby("ticker"):
-        s = _signal_at_bucket(grp, current_bucket)
+        s = _signal_at_bucket(grp, current_bucket, elapsed_fraction=elapsed_fraction)
         if s is None:
             continue
         rows.append(
@@ -174,11 +182,21 @@ def _load(lookback_secs: int | None, model: str | None = None) -> pd.DataFrame:
         return pd.read_sql_query(text(sql), conn, params=params)
 
 
-def _signal_at_bucket(grp: pd.DataFrame, target_bucket: int) -> dict | None:
+def _signal_at_bucket(
+    grp: pd.DataFrame,
+    target_bucket: int,
+    elapsed_fraction: float = 1.0,
+) -> dict | None:
     """
     Compute the signal as if `target_bucket` is the active bucket.
     Baseline = the BASELINE_HOURS immediately preceding it.
     Returns None if there isn't enough baseline history.
+
+    `elapsed_fraction` is the fraction of the target bucket that has
+    elapsed (1.0 means fully complete). Live signals pass the actual
+    fraction so the volume z-score compares estimated full-bucket count
+    vs baseline full-bucket counts. Historical signals leave it at 1.0
+    since they always evaluate completed buckets.
     """
     baseline_start = target_bucket - _BUCKETS_BACK
     hist = grp[(grp["bucket"] >= baseline_start) & (grp["bucket"] < target_bucket)]
@@ -200,7 +218,11 @@ def _signal_at_bucket(grp: pd.DataFrame, target_bucket: int) -> dict | None:
     # No activity in target bucket: sentiment defaults to baseline mean (z=0)
     current_sent = float(curr["compound"].mean()) if not curr.empty else sent_mean
 
-    vol_z = (current_count - count_mean) / count_std if count_std > 0 else 0.0
+    # Pro-rate the count for fairness against fully-elapsed baseline buckets.
+    # Falls through to current_count when elapsed_fraction=1 (historical mode).
+    estimated_full_count = current_count / elapsed_fraction
+
+    vol_z = (estimated_full_count - count_mean) / count_std if count_std > 0 else 0.0
     sent_z = (current_sent - sent_mean) / sent_std if sent_std > 0 else 0.0
 
     signal = float(np.sign(sent_z) * abs(vol_z)) if abs(vol_z) > VOLUME_Z_MIN else 0.0

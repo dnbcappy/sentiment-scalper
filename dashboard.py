@@ -17,11 +17,13 @@ from datetime import datetime, timedelta, timezone
 
 import altair as alt
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 from sqlalchemy import text
 
 from backtest import compute_hit_rates
 from db import get_engine
+from index import color_for, compute_bull_bear_index, label_for
 from prices import get_prices
 from signals import compute_signals, list_engines
 
@@ -60,6 +62,11 @@ def load_prices_cached() -> pd.DataFrame:
 @st.cache_data(ttl=600)
 def load_hit_rates_cached(threshold: float, model: str | None = None) -> pd.DataFrame:
     return compute_hit_rates(threshold, model=model)
+
+
+@st.cache_data(ttl=300)
+def load_index_cached(hours: int, ago_hours: int, model: str | None = None) -> dict:
+    return compute_bull_bear_index(hours=hours, ago_hours=ago_hours, model=model)
 
 
 # Price freshness is the cron's job (GitHub Actions runs prices.py every 3h).
@@ -103,6 +110,74 @@ if df.empty:
 
 st.title("📈 Sentiment Scalper")
 st.caption(f"Last {hours}h • {len(df):,} mentions • engine: {selected_engine or 'n/a'}")
+
+# ---------- Bull/Bear Index ----------
+
+# NewsAPI's free Developer tier serves articles ~24h delayed, so a "last 24h"
+# window is structurally empty. Use 48h for the gauge so it always has data
+# (24h of which is the "freshest" articles we ever see), and shift the
+# comparison windows to match.
+idx_now = load_index_cached(48, 0, model=selected_engine)
+idx_prev = load_index_cached(48, 48, model=selected_engine)
+idx_lastweek = load_index_cached(24, 168, model=selected_engine)
+
+gauge_col, side_col = st.columns([2, 1])
+
+with gauge_col:
+    if idx_now["score"] is None:
+        st.info("Bull/Bear Index: not enough data in the last 24h to score yet.")
+    else:
+        fig = go.Figure(
+            go.Indicator(
+                mode="gauge+number",
+                value=idx_now["score"],
+                number={"font": {"size": 56}},
+                title={"text": "Bull / Bear Index — last 48h", "font": {"size": 18}},
+                gauge={
+                    "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": "#888"},
+                    "bar": {"color": "white", "thickness": 0.18},
+                    "steps": [
+                        {"range": [0, 25], "color": "#d62728"},
+                        {"range": [25, 45], "color": "#f58518"},
+                        {"range": [45, 55], "color": "#bcbd22"},
+                        {"range": [55, 75], "color": "#9bcd9b"},
+                        {"range": [75, 100], "color": "#2ca02c"},
+                    ],
+                    "threshold": {
+                        "line": {"color": "white", "width": 4},
+                        "thickness": 0.85,
+                        "value": idx_now["score"],
+                    },
+                },
+            )
+        )
+        fig.update_layout(
+            height=300,
+            margin={"l": 20, "r": 20, "t": 60, "b": 20},
+            paper_bgcolor="rgba(0,0,0,0)",
+            font={"color": color_for(idx_now["score"])},
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(
+            f"**{label_for(idx_now['score'])}** — based on {idx_now['n']:,} mentions "
+            f"({idx_now['bullish']} bullish vs {idx_now['bearish']} bearish). "
+            "Composite of avg sentiment + bull/bear pressure."
+        )
+
+with side_col:
+    st.markdown("####")  # vertical spacer to align with the gauge
+    st.metric(
+        "Previous 48h",
+        f"{idx_prev['score']:.0f}" if idx_prev["score"] is not None else "—",
+        delta=label_for(idx_prev["score"]),
+        delta_color="off",
+    )
+    st.metric(
+        "Week ago",
+        f"{idx_lastweek['score']:.0f}" if idx_lastweek["score"] is not None else "—",
+        delta=label_for(idx_lastweek["score"]),
+        delta_color="off",
+    )
 
 # ---------- Active signals ----------
 

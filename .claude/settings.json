@@ -18,7 +18,13 @@
       "Bash(git rm *)",
       "Bash(venv/Scripts/python -m pip install \"SQLAlchemy>=2.0\" \"psycopg2-binary>=2.9\")",
       "Bash(venv/Scripts/python scripts/migrate_local_to_remote.py)",
-      "Bash(xargs grep *)"
+      "Bash(xargs grep *)",
+      "Bash(git push *)",
+      "Bash(git fetch *)",
+      "Bash(git pull *)",
+      "Bash(git stash *)",
+      "Bash(venv/Scripts/python -m pip install \"plotly>=5.0\")",
+      "Bash(venv/Scripts/python -c \"import plotly; print\\('plotly', plotly.__version__\\)\")"
     ],
     "deny": [
       "Read(./.env)",

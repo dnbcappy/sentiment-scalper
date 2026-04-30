@@ -51,6 +51,33 @@ SENTIMENT_MODEL = os.getenv("SENTIMENT_MODEL", "vader").lower()
 LOOKBACK_HOURS = 168
 MAX_TEXT_LEN = 2000
 
+# Publisher whitelist for NewsAPI. Without this, queries pull in random
+# blogs / press releases / PyPI announcements that mention "Apple" or
+# "Bitcoin" without being financial news, polluting the sentiment signal.
+NEWSAPI_DOMAINS = ",".join(
+    [
+        # Stocks / general finance
+        "bloomberg.com",
+        "reuters.com",
+        "cnbc.com",
+        "wsj.com",
+        "ft.com",
+        "marketwatch.com",
+        "barrons.com",
+        "businessinsider.com",
+        "fortune.com",
+        "forbes.com",
+        "nasdaq.com",
+        # Crypto
+        "cointelegraph.com",
+        "coindesk.com",
+        "decrypt.co",
+        "theblock.co",
+        "cryptobriefing.com",
+        "bitcoinmagazine.com",
+    ]
+)
+
 TICKERS = {
     "BTC": [r"\bBTC\b", r"\bbitcoin\b"],
     "ETH": [r"\bETH\b", r"\bethereum\b"],
@@ -242,6 +269,7 @@ def fetch_newsapi() -> list[dict]:
                     "language": "en",
                     "sortBy": "publishedAt",
                     "pageSize": 100,
+                    "domains": NEWSAPI_DOMAINS,
                     "apiKey": NEWSAPI_KEY,
                 },
                 timeout=15,
@@ -269,7 +297,15 @@ def fetch_newsapi() -> list[dict]:
                         datetime.fromisoformat(published.replace("Z", "+00:00")).timestamp()
                     )
                 except Exception:
-                    created = int(datetime.now(timezone.utc).timestamp())
+                    # Skip rather than fall back to now() — bad timestamps
+                    # would otherwise pile every malformed article into the
+                    # active bucket, distorting signal calculations.
+                    logger.warning(
+                        "Skipping article from %s — unparseable timestamp %r",
+                        (art.get("source") or {}).get("name", "unknown"),
+                        published,
+                    )
+                    continue
                 items.append(
                     {
                         "id": f"newsapi_{hashlib.md5(url.encode()).hexdigest()[:16]}",
@@ -281,8 +317,12 @@ def fetch_newsapi() -> list[dict]:
                     }
                 )
             time.sleep(0.5)
-        except Exception:
-            logger.exception("Failed to fetch news for %s", ticker)
+        except requests.exceptions.RequestException as e:
+            # Don't pass the exception object — its repr can include the
+            # request URL, which has the apiKey in the query string.
+            logger.error("NewsAPI request failed for %s: %s", ticker, type(e).__name__)
+        except Exception as e:
+            logger.error("Unexpected error processing %s: %s", ticker, type(e).__name__)
     return items
 
 

@@ -95,19 +95,47 @@ def test_compute_signals_volume_spike_triggers_bear_signal(db_path):
     assert df.iloc[0]["direction"] == "BEAR"
 
 
-def test_compute_signals_normal_volume_no_signal(db_path):
-    """Volume z-score under threshold => signal=0 even with sentiment direction."""
+def test_compute_signals_quiet_active_bucket_no_signal(db_path):
+    """Active bucket with no mentions => sentiment_z=0 => signal=0 regardless
+    of how anomalous the volume is. (Pro-rating means raw count is no longer
+    a stable proxy for 'volume gate' behavior; sentiment direction is.)"""
     now_ts = int(datetime.now(timezone.utc).timestamp())
     current_bucket = now_ts // WINDOW_SECS
 
     rows = baseline_rows("BTC", current_bucket, WINDOW_SECS)
-    for _ in range(2):
-        rows.append({"ticker": "BTC", "created_utc": now_ts, "compound": 0.8})
-
+    # No active-bucket mentions at all
     seed_mentions(db_path, rows)
     df = compute_signals()
     if not df.empty:
         assert df.iloc[0]["signal"] == 0.0
+
+
+def test_signal_at_bucket_pro_rates_count_by_elapsed(db_path):
+    """Direct unit test: _signal_at_bucket(elapsed_fraction=0.5) should pro-rate
+    the active bucket's count by 2x relative to elapsed_fraction=1.0."""
+    from datetime import datetime, timezone
+
+    from signals import _signal_at_bucket
+
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    current_bucket = now_ts // WINDOW_SECS
+
+    # Build an in-memory DataFrame matching what _load returns
+    import pandas as pd
+
+    rows = baseline_rows("BTC", current_bucket, WINDOW_SECS)
+    rows.extend({"ticker": "BTC", "created_utc": now_ts, "compound": 0.7} for _ in range(3))
+    df = pd.DataFrame(rows)
+    df["bucket"] = df["created_utc"] // WINDOW_SECS
+
+    s_full = _signal_at_bucket(df, current_bucket, elapsed_fraction=1.0)
+    s_half = _signal_at_bucket(df, current_bucket, elapsed_fraction=0.5)
+
+    assert s_full is not None and s_half is not None
+    # current_count (raw) is the same — pro-rating doesn't change the display value
+    assert s_half["current_count"] == s_full["current_count"] == 3
+    # but volume_z grows when elapsed_fraction shrinks (same count, more weight)
+    assert s_half["volume_z"] > s_full["volume_z"]
 
 
 def test_compute_signals_model_filter(db_path):
