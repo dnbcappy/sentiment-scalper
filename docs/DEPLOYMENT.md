@@ -12,17 +12,16 @@ The current key was exposed during development. **Do this before any deploy** â€
 
 **What you do:**
 
-1. Email **`support@newsapi.org`** from the address you registered with (`dylancallens1@gmail.com`) using this template:
+1. Email **`support@newsapi.org`** from the address registered with your NewsAPI account, using this template:
 
    > Subject: Key rotation request
    >
    > Hi,
    >
    > My API key on the free tier was inadvertently exposed in development logs.
-   > Could you please rotate it? My registered email is dylancallens1@gmail.com.
+   > Could you please rotate it?
    >
-   > Thanks,
-   > Dylan
+   > Thanks
 
 2. They'll either issue a new key directly or ask you to regenerate via the dashboard. Either way you end up with a new `NEWSAPI_KEY` value.
 3. Update your local `.env` with the new value.
