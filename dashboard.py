@@ -22,7 +22,7 @@ from sqlalchemy import text
 
 from backtest import compute_hit_rates
 from db import get_engine
-from prices import get_prices, update_prices
+from prices import get_prices
 from signals import compute_signals, list_engines
 
 st.set_page_config(page_title="Sentiment Scalper", layout="wide")
@@ -53,11 +53,6 @@ def load_signals_cached(model: str | None = None) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600)
-def refresh_prices_cached() -> int:
-    return update_prices()
-
-
-@st.cache_data(ttl=3600)
 def load_prices_cached() -> pd.DataFrame:
     return get_prices()
 
@@ -67,13 +62,9 @@ def load_hit_rates_cached(threshold: float, model: str | None = None) -> pd.Data
     return compute_hit_rates(threshold, model=model)
 
 
-# ---------- Price refresh on load (cached 1h) ----------
-
-try:
-    with st.spinner("Refreshing prices (cached 1h)..."):
-        refresh_prices_cached()
-except Exception as e:
-    st.warning(f"Price refresh failed: {e}. Continuing with cached data.")
+# Price freshness is the cron's job (GitHub Actions runs prices.py every 3h).
+# The dashboard is a pure read view — calling yfinance on page load adds 30-60s
+# of latency and can hang on flaky networks (Streamlit Cloud first-load hang).
 
 # ---------- Sidebar ----------
 
