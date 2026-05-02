@@ -56,6 +56,10 @@ streamlit run dashboard.py
 
 ## What the dashboard shows
 
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/09bf22e4-efe6-4ca3-920b-e7b4b25ba804" width="95%" />
+</p>
+
 - **Active signals right now** - tickers whose current 6-hour mention activity deviates from their 7-day baseline by more than the threshold.
 - **KPIs** - total mentions, avg sentiment, bullish / bearish counts in the lookback window.
 - **Per-ticker summary** - mention count, avg sentiment, bull/bear ratio.
@@ -64,6 +68,9 @@ streamlit run dashboard.py
 - **Did it work? — backtest hit rate** - for each historical signal, did the price move in the predicted direction over 1d / 3d / 7d?
 - **Engine comparison** - automatically appears when both VADER and FinBERT have scored articles, side-by-side hit rates.
 
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/89b1d782-9f59-4fd4-8a88-4606997cca30" width="95%" />
+</p>
 ---
 
 ## How the signal works
