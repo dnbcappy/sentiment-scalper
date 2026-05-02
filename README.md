@@ -1,9 +1,16 @@
 # Sentiment Scalper
 
-A small but real signal engine for finance news. It pulls headlines from NewsAPI, scores them with VADER (or FinBERT), buckets them into a volume-weighted z-score signal, and validates the result against historical price moves. A Streamlit dashboard surfaces what's firing right now and how past signals actually performed.
+Real-time news sentiment signal engine for stocks & crypto with backtesting and live dashboard. It pulls headlines from NewsAPI, scores them with VADER (or FinBERT), buckets them into a volume-weighted z-score signal, and validates the result against historical price moves. A Streamlit dashboard surfaces what's firing right now and how past signals actually performed.
 
 Currently tracking: **BTC, ETH, USDT, USDC, SPY, AAPL, TSLA, NVDA, MSFT.**
 
+## 🔗 Live Demo
+https://sentiment-scalper.streamlit.app/
+
+<img width="100%" alt="Dashboard" src="https://github.com/user-attachments/assets/884beebd-131b-4bd3-aa61-4d3c0357904a" />
+
+
+## 📊 What it does
 ---
 
 ## Stack
@@ -12,7 +19,7 @@ Currently tracking: **BTC, ETH, USDT, USDC, SPY, AAPL, TSLA, NVDA, MSFT.**
 - **NewsAPI** (free tier, 1,000 articles/day window across 7 days)
 - **VADER** rule-based sentiment (default) or **FinBERT** finance-tuned transformer (optional, ~440MB model + transformers/torch)
 - **yfinance** for daily OHLC, cached locally
-- **SQLite** — single-file local DB
+- **SQLite** - single-file local DB
 - **Streamlit + Altair** dashboard
 - **pytest + ruff** for tests and linting
 
@@ -49,14 +56,21 @@ streamlit run dashboard.py
 
 ## What the dashboard shows
 
-- **Active signals right now** — tickers whose current 6-hour mention activity deviates from their 7-day baseline by more than the threshold.
-- **KPIs** — total mentions, avg sentiment, bullish / bearish counts in the lookback window.
-- **Per-ticker summary** — mention count, avg sentiment, bull/bear ratio.
-- **Sentiment over time / Mention volume** — 1-hour bucketed time series.
-- **Sentiment vs Price** — per-ticker dual-axis chart of hourly sentiment overlayed on daily close.
-- **Did it work? — backtest hit rate** — for each historical signal, did the price move in the predicted direction over 1d / 3d / 7d?
-- **Engine comparison** — automatically appears when both VADER and FinBERT have scored articles, side-by-side hit rates.
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/09bf22e4-efe6-4ca3-920b-e7b4b25ba804" width="95%" />
+</p>
 
+- **Active signals right now** - tickers whose current 6-hour mention activity deviates from their 7-day baseline by more than the threshold.
+- **KPIs** - total mentions, avg sentiment, bullish / bearish counts in the lookback window.
+- **Per-ticker summary** - mention count, avg sentiment, bull/bear ratio.
+- **Sentiment over time / Mention volume** - 1-hour bucketed time series.
+- **Sentiment vs Price** - per-ticker dual-axis chart of hourly sentiment overlayed on daily close.
+- **Did it work? — backtest hit rate** - for each historical signal, did the price move in the predicted direction over 1d / 3d / 7d?
+- **Engine comparison** - automatically appears when both VADER and FinBERT have scored articles, side-by-side hit rates.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/89b1d782-9f59-4fd4-8a88-4606997cca30" width="95%" />
+</p>
 ---
 
 ## How the signal works
@@ -172,4 +186,8 @@ All configuration is via environment variables in `.env`:
 
 ## License
 
-Personal project. Do whatever you want with it.
+This project is licensed under the MIT License.
+
+## Disclaimer
+This project is for educational and research purposes only. 
+Not financial advice. Data sourced from third-party APIs (NewsAPI, Yahoo Finance).
