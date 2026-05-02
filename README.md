@@ -9,18 +9,19 @@ https://sentiment-scalper.streamlit.app/
 
 <img width="100%" alt="Dashboard" src="https://github.com/user-attachments/assets/884beebd-131b-4bd3-aa61-4d3c0357904a" />
 
+The deployed instance runs **autonomously on $0/month** — Supabase Postgres for storage, GitHub Actions cron for ingestion every 3 hours, Streamlit Community Cloud for the public dashboard.
 
-## 📊 What it does
 ---
 
 ## Stack
 
 - **Python 3.10+**
-- **NewsAPI** (free tier, 1,000 articles/day window across 7 days)
+- **NewsAPI** Developer free tier (~100 req/day, 7-day article window)
 - **VADER** rule-based sentiment (default) or **FinBERT** finance-tuned transformer (optional, ~440MB model + transformers/torch)
-- **yfinance** for daily OHLC, cached locally
-- **SQLite** - single-file local DB
-- **Streamlit + Altair** dashboard
+- **yfinance** for daily OHLC
+- **SQLAlchemy 2.0** over **SQLite** (local) or **Postgres** (deployed) — same code, swapped via `DATABASE_URL`
+- **Streamlit + Altair + Plotly** dashboard
+- **GitHub Actions** for the scheduled scraper
 - **pytest + ruff** for tests and linting
 
 ---
@@ -60,6 +61,7 @@ streamlit run dashboard.py
   <img src="https://github.com/user-attachments/assets/09bf22e4-efe6-4ca3-920b-e7b4b25ba804" width="95%" />
 </p>
 
+- **News Sentiment Index** - a 0-100 gauge (Bull/Bear bands) computed from average sentiment + bullish/bearish article pressure over the last 48h. Note: this measures news media tone, not market behavior, so it differs from the price-based CMC / Alternative.me Crypto Fear & Greed Index.
 - **Active signals right now** - tickers whose current 6-hour mention activity deviates from their 7-day baseline by more than the threshold.
 - **KPIs** - total mentions, avg sentiment, bullish / bearish counts in the lookback window.
 - **Per-ticker summary** - mention count, avg sentiment, bull/bear ratio.
@@ -113,17 +115,25 @@ sentiment-scalper/
 ├── sentiment_scalper.py       # ingest + score pipeline (CLI entry)
 ├── dashboard.py               # Streamlit dashboard
 ├── signals.py                 # z-score signal engine + history walker
-├── prices.py                  # yfinance fetcher + SQLite cache
+├── prices.py                  # yfinance fetcher + cache
 ├── backtest.py                # historical signal -> hit rate
+├── index.py                   # News Sentiment Index gauge engine
+├── db.py                      # SQLAlchemy engine factory (SQLite / Postgres)
 ├── tests/                     # pytest suite
-│   ├── conftest.py            # shared fixtures + seed helpers
+│   ├── conftest.py
 │   ├── test_signals.py
 │   ├── test_backtest.py
 │   ├── test_prices.py
+│   ├── test_index.py
 │   └── test_sentiment_scalper.py
+├── migrations/0001_initial.sql       # Postgres schema for hosted deploys
+├── scripts/migrate_local_to_remote.py # one-shot SQLite -> Postgres dump
+├── .github/workflows/scrape.yml      # hourly cron (every 3h)
+├── docs/DEPLOYMENT.md                # hosted-deploy walkthrough
 ├── requirements.txt           # runtime deps
 ├── requirements-dev.txt       # ruff, pytest
 ├── pyproject.toml             # ruff + pytest config
+├── LICENSE                    # MIT
 ├── .env.example               # credentials template (commit this)
 ├── .env                       # real credentials (gitignored)
 ├── .gitignore
@@ -158,14 +168,14 @@ All configuration is via environment variables in `.env`:
 |-------------------|---------------|--------------------------------------------------------------------|
 | `NEWSAPI_KEY`     | (required)    | Free key at https://newsapi.org/register.                          |
 | `SENTIMENT_MODEL` | `vader`       | `vader` or `finbert`. FinBERT requires `transformers` + `torch`.   |
-| `DB_PATH`         | `./sentiment.db` next to scripts | Override to point at a non-default DB.       |
+| `DATABASE_URL`    | `sqlite:///./sentiment.db`       | Set to `postgresql://...` to use a hosted Postgres instead. |
 
 ---
 
 ## Operational notes
 
-- **Free NewsAPI tier**: 1,000 articles/day across all queries, articles limited to the last 7 days. With 9 tickers per run that's ~111 runs/day max. A scrape every 30 minutes is a safe cadence.
-- **SQLite + INSERT OR REPLACE** for prices makes the price cache idempotent — re-running `update_prices` is safe and updates today's bar.
+- **Free NewsAPI tier**: 100 requests/day on the Developer plan, articles limited to the last 7 days. Each scraper run does 9 requests (one per ticker), so the cron is set to every 3 hours = 8 runs × 9 = 72 req/day with headroom for manual runs.
+- **Idempotent ingestion**: `INSERT ... ON CONFLICT` (works on both SQLite and Postgres) means re-running the scraper is safe — duplicates are silently dropped and today's price bar updates in place.
 - **Article IDs** include the model suffix (`newsapi_<hash>__<ticker>__<model>`) so the same article can carry independent VADER and FinBERT scores. Existing rows are migrated in-place on the next `init_db()`.
 - **Backtest accuracy**: entry/exit prices use "last close at or before" — simple and realistic. Weekend signals on stocks may show 0% return at short horizons because Friday's close is the only data; crypto trades 24/7 so this only affects equities. With more data this washes out in the aggregate.
 
@@ -177,10 +187,11 @@ All configuration is via environment variables in `.env`:
 - [x] Phase 2: volume-weighted z-score signal engine
 - [x] Phase 3: yfinance price overlay + 1d/3d/7d backtest
 - [x] Phase 4: model-aware schema + engine comparison panel
-- [ ] Phase 5: deployment (Streamlit Community Cloud or Firebase + Cloud Run)
-- [ ] FinBERT comparison results once enough data has accumulated
-- [ ] Publisher blocklist for noise sources (PyPI, Slashdot, etc.)
-- [ ] Scheduled runs (cron / Task Scheduler / cloud cron job)
+- [x] Phase 5: deployment (Streamlit Cloud + Supabase Postgres + GitHub Actions cron)
+- [x] Publisher whitelist for noise reduction (financial sources only)
+- [x] News Sentiment Index gauge
+- [ ] FinBERT comparison once enough data has accumulated (~3-4 weeks)
+- [ ] Custom domain on cappystudios.dev infrastructure
 
 ---
 
