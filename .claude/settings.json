@@ -24,7 +24,12 @@
       "Bash(git pull *)",
       "Bash(git stash *)",
       "Bash(venv/Scripts/python -m pip install \"plotly>=5.0\")",
-      "Bash(venv/Scripts/python -c \"import plotly; print\\('plotly', plotly.__version__\\)\")"
+      "Bash(venv/Scripts/python -c \"import plotly; print\\('plotly', plotly.__version__\\)\")",
+      "Bash(grep -v \"test\\\\|placeholder\\\\|YOUR-\\\\|env\\\\.example\\\\|os\\\\.getenv\\\\|\\\\\\\\$\\\\\\\\{\")",
+      "Bash(grep -v \"^\\\\\\\\+\\\\\\\\+\\\\\\\\+\\\\\\\\|^\\\\\\\\-\\\\\\\\-\\\\\\\\-\\\\\\\\|YOUR-\\\\\\\\|placeholder\\\\\\\\|registered email\")",
+      "Bash(curl -s https://api.github.com/users/dnbcappy)",
+      "Bash(git config *)",
+      "Bash(git commit *)"
     ],
     "deny": [
       "Read(./.env)",

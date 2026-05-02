@@ -12,6 +12,8 @@ on:
     - cron: "7 */3 * * *"
   workflow_dispatch: {} # allow manual runs from the Actions tab
 
+permissions:
+  contents: read
 # Only one scrape may run at a time — prevents overlapping if a run is slow
 concurrency:
   group: scrape
