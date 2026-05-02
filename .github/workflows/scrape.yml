@@ -48,3 +48,11 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python prices.py
+
+      - name: Ping dashboard to keep Streamlit Cloud awake
+        # Streamlit Community Cloud puts apps to sleep after ~12-24h of zero
+        # traffic. A simple HTTPS GET from each cron run nudges the sleep
+        # timer. `|| true` makes this step never fail the build — if the
+        # dashboard is briefly unreachable that's the dashboard's problem,
+        # not the scraper's.
+        run: curl -sS -o /dev/null https://sentiment-scalper.streamlit.app/ || true
