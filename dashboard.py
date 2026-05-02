@@ -132,7 +132,7 @@ with gauge_col:
                 mode="gauge+number",
                 value=idx_now["score"],
                 number={"font": {"size": 56}},
-                title={"text": "Bull / Bear Index — last 48h", "font": {"size": 18}},
+                title={"text": "News Sentiment Index — last 48h", "font": {"size": 18}},
                 gauge={
                     "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": "#888"},
                     "bar": {"color": "white", "thickness": 0.18},
@@ -161,7 +161,9 @@ with gauge_col:
         st.caption(
             f"**{label_for(idx_now['score'])}** — based on {idx_now['n']:,} mentions "
             f"({idx_now['bullish']} bullish vs {idx_now['bearish']} bearish). "
-            "Composite of avg sentiment + bull/bear pressure."
+            "Composite of avg sentiment + bull/bear pressure across financial news. "
+            "Note: this measures **news media tone**, not market behavior. "
+            "Will diverge from the price-based CMC / Alternative.me Crypto Fear & Greed Index."
         )
 
 with side_col:
