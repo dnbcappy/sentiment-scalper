@@ -186,4 +186,8 @@ All configuration is via environment variables in `.env`:
 
 ## License
 
-Personal project. Do whatever you want with it.
+This project is licensed under the MIT License.
+
+## Disclaimer
+This project is for educational and research purposes only. 
+Not financial advice. Data sourced from third-party APIs (NewsAPI, Yahoo Finance).
