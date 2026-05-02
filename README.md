@@ -4,6 +4,10 @@ Real-time news sentiment signal engine for stocks & crypto with backtesting and 
 
 Currently tracking: **BTC, ETH, USDT, USDC, SPY, AAPL, TSLA, NVDA, MSFT.**
 
+## 🔗 Live Demo
+https://sentiment-scalper.streamlit.app/
+
+## 📊 What it does
 ---
 
 ## Stack
@@ -12,7 +16,7 @@ Currently tracking: **BTC, ETH, USDT, USDC, SPY, AAPL, TSLA, NVDA, MSFT.**
 - **NewsAPI** (free tier, 1,000 articles/day window across 7 days)
 - **VADER** rule-based sentiment (default) or **FinBERT** finance-tuned transformer (optional, ~440MB model + transformers/torch)
 - **yfinance** for daily OHLC, cached locally
-- **SQLite** — single-file local DB
+- **SQLite** - single-file local DB
 - **Streamlit + Altair** dashboard
 - **pytest + ruff** for tests and linting
 
@@ -49,13 +53,13 @@ streamlit run dashboard.py
 
 ## What the dashboard shows
 
-- **Active signals right now** — tickers whose current 6-hour mention activity deviates from their 7-day baseline by more than the threshold.
-- **KPIs** — total mentions, avg sentiment, bullish / bearish counts in the lookback window.
-- **Per-ticker summary** — mention count, avg sentiment, bull/bear ratio.
-- **Sentiment over time / Mention volume** — 1-hour bucketed time series.
-- **Sentiment vs Price** — per-ticker dual-axis chart of hourly sentiment overlayed on daily close.
-- **Did it work? — backtest hit rate** — for each historical signal, did the price move in the predicted direction over 1d / 3d / 7d?
-- **Engine comparison** — automatically appears when both VADER and FinBERT have scored articles, side-by-side hit rates.
+- **Active signals right now** - tickers whose current 6-hour mention activity deviates from their 7-day baseline by more than the threshold.
+- **KPIs** - total mentions, avg sentiment, bullish / bearish counts in the lookback window.
+- **Per-ticker summary** - mention count, avg sentiment, bull/bear ratio.
+- **Sentiment over time / Mention volume** - 1-hour bucketed time series.
+- **Sentiment vs Price** - per-ticker dual-axis chart of hourly sentiment overlayed on daily close.
+- **Did it work? — backtest hit rate** - for each historical signal, did the price move in the predicted direction over 1d / 3d / 7d?
+- **Engine comparison** - automatically appears when both VADER and FinBERT have scored articles, side-by-side hit rates.
 
 ---
 
