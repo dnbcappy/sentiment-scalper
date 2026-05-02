@@ -7,6 +7,9 @@ Currently tracking: **BTC, ETH, USDT, USDC, SPY, AAPL, TSLA, NVDA, MSFT.**
 ## 🔗 Live Demo
 https://sentiment-scalper.streamlit.app/
 
+<img width="100%" alt="Dashboard" src="https://github.com/user-attachments/assets/884beebd-131b-4bd3-aa61-4d3c0357904a" />
+
+
 ## 📊 What it does
 ---
 
