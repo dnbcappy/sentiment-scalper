@@ -1,6 +1,6 @@
 # Sentiment Scalper
 
-A small but real signal engine for finance news. It pulls headlines from NewsAPI, scores them with VADER (or FinBERT), buckets them into a volume-weighted z-score signal, and validates the result against historical price moves. A Streamlit dashboard surfaces what's firing right now and how past signals actually performed.
+Real-time news sentiment signal engine for stocks & crypto with backtesting and live dashboard. It pulls headlines from NewsAPI, scores them with VADER (or FinBERT), buckets them into a volume-weighted z-score signal, and validates the result against historical price moves. A Streamlit dashboard surfaces what's firing right now and how past signals actually performed.
 
 Currently tracking: **BTC, ETH, USDT, USDC, SPY, AAPL, TSLA, NVDA, MSFT.**
 
