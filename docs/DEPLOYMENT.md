@@ -56,7 +56,7 @@ Three independent decisions: where the **app** runs, where the **scraper** runs,
 | Scraper   | Cloud Run + Cloud Scheduler | Same container or a separate job, triggered every N minutes. |
 | DB        | Cloud SQL Postgres   | Smallest instance ~$10/mo, lower if you use Firestore instead.     |
 
-**Pros:** Single vendor (you already use Firebase for cappystudios.dev). Production-grade — IAM, logging, backups, custom domain ergonomics. No sleep behavior.
+**Pros:** Production-grade — IAM, logging, backups, custom domain ergonomics. No sleep behavior. Good fit if you want unified infrastructure under a single cloud vendor.
 **Cons:** Costs real money once Cloud SQL is on (Cloud Run itself is mostly free at this traffic level). Setup is hours, not minutes — Dockerfile, service accounts, IAM bindings. Overkill if no one's actually using the app yet.
 
 ### Sidebar: why not "just keep SQLite"?
@@ -74,7 +74,7 @@ For where this project is right now:
 3. **Migration to Option B later is straightforward** — Cloud Run can pull the same code; only the DB connection string changes if we use Postgres on both sides.
 4. **The cold-start tax is irrelevant** for a project people will check once or twice a day.
 
-The only reason to skip A and go to B today: if you specifically want this on cappystudios.dev infrastructure for portfolio reasons. That's a real reason, just not a code one.
+The only reason to skip A and go to B today: if you specifically want this on a custom-domain stack for branding reasons. That's a real reason, just not a code one.
 
 ---
 
