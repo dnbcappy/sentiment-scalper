@@ -191,7 +191,7 @@ All configuration is via environment variables in `.env`:
 - [x] Publisher whitelist for noise reduction (financial sources only)
 - [x] News Sentiment Index gauge
 - [ ] FinBERT comparison once enough data has accumulated (~3-4 weeks)
-- [ ] Custom domain on cappystudios.dev infrastructure
+- [ ] Custom domain (web dev / SaaS brand — TBD)
 
 ---
 
