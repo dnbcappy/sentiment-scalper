@@ -17,6 +17,7 @@ The deployed instance runs **autonomously on $0/month** — Supabase Postgres fo
 
 - **Python 3.10+**
 - **NewsAPI** Developer free tier (~100 req/day, 7-day article window)
+- **RSS feeds** from CoinDesk, Cointelegraph, Decrypt, CNBC, MarketWatch, Investing.com — free, unlimited, designed for programmatic consumption
 - **VADER** rule-based sentiment (default) or **FinBERT** finance-tuned transformer (optional, ~440MB model + transformers/torch)
 - **yfinance** for daily OHLC
 - **SQLAlchemy 2.0** over **SQLite** (local) or **Postgres** (deployed) — same code, swapped via `DATABASE_URL`
@@ -209,7 +210,7 @@ All configuration is via environment variables in `.env`:
 - [x] Publisher whitelist for noise reduction (financial sources only)
 - [x] News Sentiment Index gauge
 - [x] FinBERT comparison (preliminary at n=47, will sharpen with more data)
-- [ ] Second data source (Reddit via PRAW, or RSS) to boost article volume
+- [x] Second data source: RSS feeds from 6 finance publishers (Reddit/PRAW considered but skipped due to Reddit's developer terms requiring written approval for any scraping)
 - [ ] Custom domain (web dev / SaaS brand — TBD)
 
 ---

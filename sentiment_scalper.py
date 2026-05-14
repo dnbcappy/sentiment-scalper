@@ -342,8 +342,33 @@ _INSERT_MENTION = text("""
 def ingest(sentiment_engine) -> int:
     """Fetch, filter, score, and insert mentions. Returns the number of new rows."""
     logger.info("Fetching NewsAPI (one query per ticker)...")
-    items = fetch_newsapi()
-    logger.info("Total: %d unique articles", len(items))
+    newsapi_items = fetch_newsapi()
+    logger.info("NewsAPI: %d articles", len(newsapi_items))
+
+    logger.info("Fetching RSS feeds...")
+    from rss_scraper import fetch_rss
+
+    rss_items = fetch_rss()
+    logger.info("RSS: %d entries", len(rss_items))
+
+    # Within-run dedup across sources: when NewsAPI and RSS surface the same
+    # URL (likely when they cover the same publisher), the URL hash is the
+    # same — extract it from the ID (format: "<source>_<hash>") and keep
+    # only the first occurrence. Cross-run dedup is handled separately by
+    # the ON CONFLICT DO NOTHING insert at the DB level.
+    seen_hashes: set[str] = set()
+    items: list[dict] = []
+    for item in newsapi_items + rss_items:
+        parts = item["id"].split("_", 1)
+        url_hash = parts[1] if len(parts) == 2 else item["id"]
+        if url_hash in seen_hashes:
+            continue
+        seen_hashes.add(url_hash)
+        items.append(item)
+    deduped = (len(newsapi_items) + len(rss_items)) - len(items)
+    if deduped > 0:
+        logger.info("Deduped %d cross-source URL overlaps", deduped)
+    logger.info("Total unique items this run: %d", len(items))
 
     candidates = []
     for item in items:
@@ -352,7 +377,7 @@ def ingest(sentiment_engine) -> int:
             item["tickers"] = tickers
             candidates.append(item)
     logger.info(
-        "%d articles contain tracked tickers — scoring with %s",
+        "%d items contain tracked tickers — scoring with %s",
         len(candidates),
         sentiment_engine.name,
     )

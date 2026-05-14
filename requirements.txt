@@ -8,6 +8,7 @@ yfinance>=0.2
 SQLAlchemy>=2.0
 psycopg2-binary>=2.9
 plotly>=5.0
+feedparser>=6.0
 
 # Optional - only needed if SENTIMENT_MODEL=finbert
 # transformers>=4.40
