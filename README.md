@@ -106,6 +106,24 @@ After the first FinBERT run, the dashboard's **Engine comparison** section appea
 
 > Heads up: meaningful comparison needs **30+ historical signals per engine**. With a fresh DB and the free NewsAPI tier, expect 2-3 weeks of regular scraping before the comparison is statistically informative.
 
+### FinBERT vs VADER — preliminary findings (n=47 signals each, 2026-05-14)
+
+Both engines scored the same 2,621 article ↔ ticker pairs.
+
+| Metric | VADER | FinBERT |
+|---|---|---|
+| Avg compound score | +0.161 | +0.058 |
+| Bullish (compound > 0.2) | 1263 (48%) | 952 (36%) |
+| Bearish (compound < -0.2) | 607 (23%) | 686 (26%) |
+| Neutral | 766 (29%) | 983 (38%) |
+| Hit rate @ 1d | 51.1% | 51.1% |
+| Hit rate @ 3d | 50.0% | **52.8%** |
+| Hit rate @ 7d | **75.9%** | 62.1% |
+
+**FinBERT is noticeably more conservative** on financial text — it labels ~25% fewer articles as "bullish" than VADER and pushes the extras into "neutral." VADER appears to have a structural positive bias from general-purpose training, which finance-tuned FinBERT corrects.
+
+**Hit rate verdict at n=47**: directional but inconclusive. They tie at 1d, FinBERT edges 3d, VADER pulls ahead at 7d. Sample size grows ~8 signals/week — a focused comparison after another 3-4 weeks will be much more credible.
+
 ---
 
 ## Project layout
@@ -190,7 +208,8 @@ All configuration is via environment variables in `.env`:
 - [x] Phase 5: deployment (Streamlit Cloud + Supabase Postgres + GitHub Actions cron)
 - [x] Publisher whitelist for noise reduction (financial sources only)
 - [x] News Sentiment Index gauge
-- [ ] FinBERT comparison once enough data has accumulated (~3-4 weeks)
+- [x] FinBERT comparison (preliminary at n=47, will sharpen with more data)
+- [ ] Second data source (Reddit via PRAW, or RSS) to boost article volume
 - [ ] Custom domain (web dev / SaaS brand — TBD)
 
 ---
