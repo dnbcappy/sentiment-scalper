@@ -29,7 +29,22 @@
       "Bash(grep -v \"^\\\\\\\\+\\\\\\\\+\\\\\\\\+\\\\\\\\|^\\\\\\\\-\\\\\\\\-\\\\\\\\-\\\\\\\\|YOUR-\\\\\\\\|placeholder\\\\\\\\|registered email\")",
       "Bash(curl -s https://api.github.com/users/dnbcappy)",
       "Bash(git config *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(venv/Scripts/python -m pip install transformers torch --index-url https://download.pytorch.org/whl/cpu)",
+      "Bash(venv/Scripts/python -m pip install torch --index-url https://download.pytorch.org/whl/cpu)",
+      "Bash(venv/Scripts/python -m pip install transformers)",
+      "Bash(venv/Scripts/python scripts/rescore_existing.py)",
+      "Bash(venv/Scripts/python -m ruff format scripts/rescore_existing.py)",
+      "Bash(venv/Scripts/python -m pip install \"praw>=7.7\")",
+      "Bash(venv/Scripts/python -c \"import praw; print\\(f'praw {praw.__version__}'\\)\")",
+      "Bash(venv/Scripts/python -m ruff check reddit_scraper.py tests/test_reddit_scraper.py)",
+      "Bash(venv/Scripts/python -m ruff format reddit_scraper.py tests/test_reddit_scraper.py)",
+      "Bash(venv/Scripts/python -m pytest tests/test_reddit_scraper.py -v)",
+      "Bash(git revert *)",
+      "Bash(venv/Scripts/python -m pip install \"feedparser>=6.0\")",
+      "Bash(venv/Scripts/python -c \"import feedparser; print\\(f'feedparser {feedparser.__version__}'\\)\")",
+      "Bash(venv/Scripts/python -m ruff format rss_scraper.py tests/test_rss_scraper.py sentiment_scalper.py)",
+      "Bash(venv/Scripts/python -m pytest tests/test_rss_scraper.py -v)"
     ],
     "deny": [
       "Read(./.env)",
