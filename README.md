@@ -17,7 +17,6 @@ The deployed instance runs **autonomously on $0/month** — Supabase Postgres fo
 
 - **Python 3.10+**
 - **NewsAPI** Developer free tier (~100 req/day, 7-day article window)
-- **Reddit** via PRAW — optional second data source, free, scrapes recent posts from r/wallstreetbets, r/stocks, r/investing, r/cryptocurrency, r/CryptoMarkets, r/Bitcoin, r/ethfinance
 - **VADER** rule-based sentiment (default) or **FinBERT** finance-tuned transformer (optional, ~440MB model + transformers/torch)
 - **yfinance** for daily OHLC
 - **SQLAlchemy 2.0** over **SQLite** (local) or **Postgres** (deployed) — same code, swapped via `DATABASE_URL`
@@ -188,9 +187,6 @@ All configuration is via environment variables in `.env`:
 | `NEWSAPI_KEY`     | (required)    | Free key at https://newsapi.org/register.                          |
 | `SENTIMENT_MODEL` | `vader`       | `vader` or `finbert`. FinBERT requires `transformers` + `torch`.   |
 | `DATABASE_URL`    | `sqlite:///./sentiment.db`       | Set to `postgresql://...` to use a hosted Postgres instead. |
-| `REDDIT_CLIENT_ID` | (optional)   | Required to enable Reddit ingestion. Get from reddit.com/prefs/apps (script type). |
-| `REDDIT_CLIENT_SECRET` | (optional) | Paired with the client ID above. |
-| `REDDIT_USER_AGENT` | `sentiment-scalper/1.0 by github.com/dnbcappy` | Reddit asks for a descriptive UA. Customize if you fork. |
 
 ---
 
@@ -213,7 +209,7 @@ All configuration is via environment variables in `.env`:
 - [x] Publisher whitelist for noise reduction (financial sources only)
 - [x] News Sentiment Index gauge
 - [x] FinBERT comparison (preliminary at n=47, will sharpen with more data)
-- [x] Second data source: Reddit via PRAW (7 finance subreddits, optional via env)
+- [ ] Second data source (Reddit via PRAW, or RSS) to boost article volume
 - [ ] Custom domain (web dev / SaaS brand — TBD)
 
 ---
