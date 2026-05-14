@@ -1,0 +1,75 @@
+name: Keep dashboard awake
+
+# Streamlit Community Cloud free tier sleeps apps after ~8-12h of no real
+# (WebSocket) traffic. Plain HTTP pings — curl, UptimeRobot — get 200 OK
+# back but don't count as activity, because Streamlit's sleep heuristic
+# specifically tracks WebSocket sessions, not raw HTTPS hits.
+#
+# This workflow launches a real headless Chromium via Playwright, loads
+# the dashboard, waits for the page title to render (proving the
+# Streamlit script ran over a WebSocket), then closes. That counts as a
+# real visit and resets the sleep timer.
+#
+# Free for public repos. Runs every 4 hours at :11 — well inside the
+# observed 8-12h sleep window with margin for occasional skipped runs.
+
+on:
+  schedule:
+    - cron: "11 */4 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: true
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Playwright + Chromium
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Wake dashboard via real browser session
+        run: |
+          python << 'PY'
+          from playwright.sync_api import sync_playwright
+
+          URL = "https://sentiment-scalper.streamlit.app/"
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              page = browser.new_context().new_page()
+              page.goto(URL, wait_until="networkidle", timeout=90_000)
+
+              # If the app was sleeping, click the wake-up button
+              wake = page.locator('button:has-text("Yes, get this app back up")')
+              if wake.count() > 0:
+                  print("App was asleep — clicking wake button")
+                  wake.click()
+                  page.wait_for_load_state("networkidle", timeout=120_000)
+
+              # Wait for a dashboard-specific element that only renders after
+              # the Streamlit script runs over a WebSocket session. Confirms
+              # we established a real session (the whole point of this job).
+              page.wait_for_selector('h1:has-text("Sentiment Scalper")', timeout=60_000)
+              print("Dashboard loaded — WebSocket session established")
+
+              # Give Streamlit a moment to record the activity before we
+              # tear down the browser.
+              page.wait_for_timeout(5_000)
+              browser.close()
+              print("Keepalive ping complete.")
+          PY
