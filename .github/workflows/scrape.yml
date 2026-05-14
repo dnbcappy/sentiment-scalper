@@ -44,6 +44,11 @@ jobs:
           NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SENTIMENT_MODEL: vader
+          # Reddit credentials are optional — scraper falls back to NewsAPI-only
+          # if the secrets don't exist on the repo.
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          REDDIT_USER_AGENT: sentiment-scalper/1.0 by github.com/dnbcappy
         run: python sentiment_scalper.py
 
       - name: Run price refresh

@@ -342,8 +342,17 @@ _INSERT_MENTION = text("""
 def ingest(sentiment_engine) -> int:
     """Fetch, filter, score, and insert mentions. Returns the number of new rows."""
     logger.info("Fetching NewsAPI (one query per ticker)...")
-    items = fetch_newsapi()
-    logger.info("Total: %d unique articles", len(items))
+    newsapi_items = fetch_newsapi()
+    logger.info("NewsAPI: %d articles", len(newsapi_items))
+
+    logger.info("Fetching Reddit (configured subreddits)...")
+    from reddit_scraper import fetch_reddit
+
+    reddit_items = fetch_reddit()
+    logger.info("Reddit: %d posts", len(reddit_items))
+
+    items = newsapi_items + reddit_items
+    logger.info("Total raw items: %d", len(items))
 
     candidates = []
     for item in items:
@@ -352,7 +361,7 @@ def ingest(sentiment_engine) -> int:
             item["tickers"] = tickers
             candidates.append(item)
     logger.info(
-        "%d articles contain tracked tickers — scoring with %s",
+        "%d items contain tracked tickers — scoring with %s",
         len(candidates),
         sentiment_engine.name,
     )
